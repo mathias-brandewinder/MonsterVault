@@ -6,48 +6,56 @@ type Ability =
     | WIS
     | CHA
 
-type AbilityScores = {
-    STR: int
-    DEX: int
-    CON: int
-    INT: int
-    WIS: int
-    CHA: int
-    }
+module Ability = 
 
-let scoreToModifier score = 
-    (score / 2) - 5
-    |> min 10
-    |> max -5
+    type Scores = {
+        STR: int
+        DEX: int
+        CON: int
+        INT: int
+        WIS: int
+        CHA: int
+        }
 
-type AbilityScoreBonus = {
-    Ability: Ability
-    Bonus: int
-    }
+    let scoreToModifier score = 
+        (score / 2) - 5
+        |> min 10
+        |> max -5
 
-type Abilities = {
-    Scores: AbilityScores
-    Bonuses: AbilityScoreBonus list
-    }
+    type ScoreBonus = {
+        Ability: Ability
+        Bonus: int
+        }
 
-let modifier abilities ability = 
-    let baseScore = 
-        let scores = abilities.Scores
-        match ability with
-        | STR -> scores.STR
-        | DEX -> scores.DEX
-        | CON -> scores.CON
-        | INT -> scores.INT 
-        | WIS -> scores.WIS
-        | CHA -> scores.CHA
-    let bonuses = 
-        abilities.Bonuses 
-        |> List.sumBy (fun bonus -> 
-            if bonus.Ability = ability 
-            then bonus.Bonus 
-            else 0)
-    baseScore + bonuses 
-    |> scoreToModifier
+    type Abilities = {
+        Scores: Scores
+        Bonuses: ScoreBonus list
+        }
+
+    let score abilities ability =
+        let baseScore = 
+            let scores = abilities.Scores
+            match ability with
+            | STR -> scores.STR
+            | DEX -> scores.DEX
+            | CON -> scores.CON
+            | INT -> scores.INT 
+            | WIS -> scores.WIS
+            | CHA -> scores.CHA
+        let bonuses = 
+            abilities.Bonuses 
+            |> List.sumBy (fun bonus -> 
+                if bonus.Ability = ability 
+                then bonus.Bonus 
+                else 0)
+        baseScore + bonuses 
+
+    let modifier abilities ability = 
+        ability
+        |> score abilities
+        |> scoreToModifier
+
+open Ability
 
 let goblin = {
     Scores = {
@@ -61,4 +69,5 @@ let goblin = {
     Bonuses = [ ]
     }
 
+score goblin DEX
 modifier goblin DEX
