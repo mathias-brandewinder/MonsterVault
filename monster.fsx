@@ -54,20 +54,3 @@ module Ability =
         ability
         |> score abilities
         |> scoreToModifier
-
-open Ability
-
-let goblin = {
-    Scores = {
-        STR = 8
-        DEX = 14
-        CON = 10
-        INT = 10
-        WIS = 8
-        CHA = 8
-        }
-    Bonuses = [ ]
-    }
-
-score goblin DEX
-modifier goblin DEX
