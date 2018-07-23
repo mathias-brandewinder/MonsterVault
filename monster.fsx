@@ -8,6 +8,8 @@ type Ability =
 
 module Ability = 
 
+    let abilities = [ STR; DEX; CON; INT; WIS; CHA ]
+
     type Scores = {
         STR: int
         DEX: int

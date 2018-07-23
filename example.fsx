@@ -1,7 +1,9 @@
-#load "monster.fsx"
-
+#load "markdown.fsx"
 open Monster
 open Monster.Ability
+
+#load "monster.fsx"
+open Markdown
 
 let goblin = {
     Scores = {
@@ -28,3 +30,5 @@ let goblinBoss = {
 
 score goblinBoss STR
 modifier goblinBoss STR
+
+let abilityBlock = goblinBoss |> Markdown.abilities
