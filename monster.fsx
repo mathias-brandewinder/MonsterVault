@@ -58,17 +58,18 @@ module Ability =
         |> scoreToModifier
 
 type Dice = | D of Sides : int
+
 type Roll = 
     | Roll of int * Dice
     | Value of int
     | Add of Roll list
     static member Default (roll:Roll) =
-        let rec eval (total:int) (roll:Roll) =
+        let rec eval (roll:Roll) =
             match roll with
             | Roll(times,D(sides)) -> (times * (sides + 1)) / 2
             | Value(value) -> value
             | Add(rolls) ->
-                rolls |> List.sumBy (eval 0)
-        eval 0 roll
+                rolls |> List.sumBy eval
+        eval roll
 
 Roll.Default (Add [ Roll(3, D 8); Value 9 ])
