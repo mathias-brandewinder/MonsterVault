@@ -12,7 +12,7 @@ module Markdown =
     let abilities (abilities:Ability.Abilities) =
         [
             Ability.abilities |> List.map (sprintf "%A") |> String.concat " | "
-            Ability.abilities |> List.map (fun _ -> " :---: ") |> String.concat " | "
+            Ability.abilities |> List.map (fun _ -> ":---:") |> String.concat " | "
             Ability.abilities |> List.map (Ability.score abilities >> sprintf "%i") |> String.concat " | "
             Ability.abilities |> List.map (Ability.modifier abilities >> signed) |> String.concat " | "
         ]
