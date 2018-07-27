@@ -71,5 +71,14 @@ type Roll =
             | Add(rolls) ->
                 rolls |> List.sumBy eval
         eval roll
+    static member Render (roll:Roll) =
+        match roll with
+        | Roll(times,D(sides)) -> sprintf "%id%i" times sides
+        | Value(value) -> sprintf "%i" value
+        | Add(rolls) -> 
+            rolls 
+            |> List.map Roll.Render 
+            |> String.concat "+"
 
 Roll.Default (Add [ Roll(3, D 8); Value 9 ])
+Roll.Render (Add [ Roll(3, D 8); Value 9 ])
