@@ -45,6 +45,15 @@ type Ability =
     | WIS
     | CHA
     
+type Size = 
+    | Tiny
+    | Small 
+    | Medium 
+    | Large 
+    | Huge 
+    | Gargantuan
+
+[<AutoOpen>]
 module Ability = 
 
     let abilities = [ STR; DEX; CON; INT; WIS; CHA ]
@@ -95,3 +104,23 @@ module Ability =
         ability
         |> score abilities
         |> scoreToModifier
+
+let hitPointsDice (size:Size) =
+    match size with
+    | Tiny -> d4
+    | Small -> d6 
+    | Medium -> d8
+    | Large -> d10
+    | Huge -> d12
+    | Gargantuan -> d20
+
+type Monster = {
+    Name: string
+    Size: Size
+    HitDice: int
+    Abilities: Abilities
+    }
+    with
+    static member HitPoints (monster:Monster) = 
+        monster.HitDice * hitPointsDice monster.Size
+        + monster.HitDice * modifier monster.Abilities CON
