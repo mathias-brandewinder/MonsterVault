@@ -8,7 +8,10 @@ open Markdown
 let goblin = {
     Name = "Goblin"
     HitDice = 2
-    Size = Small       
+    Size = Small
+    CreatureType = Humanoid
+    Alignment = Neutral, Evil
+    Speed = 30
     Abilities = {
         Scores = {
             STR = 8
@@ -49,6 +52,9 @@ let hobgoblin = {
     Name = "Hobgoblin"
     HitDice = 2
     Size = Medium       
+    CreatureType = Humanoid
+    Alignment = Lawful, Evil 
+    Speed = 30
     Abilities = {
         Scores = {
             STR = 13
@@ -83,3 +89,5 @@ hobgoblin |> Monster.HitPoints |> Roll.Average
 
 hobgoblinCaptain |> Monster.HitPoints
 hobgoblinCaptain |> Monster.HitPoints |> Roll.Average
+
+let sheet = hobgoblinCaptain |> Markdown.monsterSheet

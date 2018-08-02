@@ -45,6 +45,22 @@ type Ability =
     | WIS
     | CHA
     
+type CreatureType = 
+    | Aberration 
+    | Beast 
+    | Celestial 
+    | Construct 
+    | Dragon 
+    | Elemental 
+    | Fey 
+    | Fiend 
+    | Giant 
+    | Humanoid 
+    | Monstrosity 
+    | Ooze 
+    | Plant 
+    | Undead 
+
 type Size = 
     | Tiny
     | Small 
@@ -52,6 +68,18 @@ type Size =
     | Large 
     | Huge 
     | Gargantuan
+
+type Social = 
+    | Lawful 
+    | Neutral 
+    | Chaotic 
+
+type Moral = 
+    | Good 
+    | Neutral 
+    | Evil 
+
+type Alignment = Social * Moral 
 
 [<AutoOpen>]
 module Ability = 
@@ -117,6 +145,9 @@ let hitPointsDice (size:Size) =
 type Monster = {
     Name: string
     Size: Size
+    CreatureType: CreatureType
+    Alignment: Alignment
+    Speed: int
     HitDice: int
     Abilities: Abilities
     }
