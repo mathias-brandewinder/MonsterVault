@@ -1,4 +1,6 @@
 #load "monster.fsx"
+open System
+open System.Globalization
 open Monster
 
 [<RequireQualifiedAccess>]
@@ -8,6 +10,16 @@ module Markdown =
         if value > 0
         then sprintf "+%i" value
         else sprintf "%i" value
+
+    let textInfo = CultureInfo("en-US",false).TextInfo
+
+    let lower (txt:string) = txt.ToLowerInvariant ()
+    let allCaps (txt:string) = txt.ToUpperInvariant ()
+    let titleCase (txt:string) = txt |> textInfo.ToTitleCase
+    let capitalize (txt:string) =
+        if String.IsNullOrWhiteSpace txt
+        then txt
+        else (txt.[0] |> Char.ToUpperInvariant |> string) + txt.Substring(1)
 
     let alignment alignment =
         let social,moral = alignment
@@ -37,7 +49,7 @@ module Markdown =
     let monsterSheet (monster:Monster) =
         let hitPoints = Monster.HitPoints monster
         [
-            sprintf "# %s" monster.Name            
+            sprintf "# %s" monster.Name |> titleCase      
             sprintf "_%A %A, %s_" monster.Size monster.CreatureType (alignment monster.Alignment)
                        
             sprintf "**Hit Points** %i (%s)" (hitPoints |> Roll.Average) (hitPoints |> Roll.Render)
