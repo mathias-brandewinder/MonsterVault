@@ -51,7 +51,8 @@ module Markdown =
         [
             sprintf "# %s" monster.Name |> titleCase      
             sprintf "_%A %A, %s_" monster.Size monster.CreatureType (alignment monster.Alignment)
-                       
+            
+            sprintf "**Armor Class** %i" (Monster.AC monster)
             sprintf "**Hit Points** %i (%s)" (hitPoints |> Roll.Average) (hitPoints |> Roll.Render)
             sprintf "**Speed** %i ft." monster.Speed
 

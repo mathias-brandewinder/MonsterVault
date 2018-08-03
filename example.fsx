@@ -11,6 +11,10 @@ let goblin = {
     Size = Small
     CreatureType = Humanoid
     Alignment = Social.Neutral, Evil
+    Armor = { 
+        Armor = Leather 
+        Shield = true
+        }
     Speed = 30
     Abilities = {
         Scores = {
@@ -31,7 +35,11 @@ modifier goblin.Abilities STR
 let goblinBoss = {
     goblin with
         Name = "Goblin Boss"
-        HitDice = 6            
+        HitDice = 6
+        Armor = {
+            goblin.Armor with
+                Armor = ChainShirt
+            }       
         Abilities = {
             goblin.Abilities with
                 Bonuses = [
@@ -54,6 +62,10 @@ let hobgoblin = {
     Size = Medium       
     CreatureType = Humanoid
     Alignment = Lawful, Evil 
+    Armor = {
+        Armor = ChainMail
+        Shield = true
+        }
     Speed = 30
     Abilities = {
         Scores = {
@@ -72,6 +84,11 @@ let hobgoblinCaptain = {
     hobgoblin with
         Name = "Hobgoblin Captain"
         HitDice = 6
+        Armor = {
+            hobgoblin.Armor with
+                Armor = HalfPlate
+                Shield = false
+            }
         Abilities = {
             hobgoblin.Abilities with
                 Bonuses = [
