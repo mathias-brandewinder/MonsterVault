@@ -96,28 +96,37 @@ type Armor =
     | Plate 
 
 type ProtectiveGear = {
-    Armor: Armor
+    Armor: Armor option
     Shield: bool
     }
 
-let armorClass gear dex =
-    let armor = gear.Armor
-    match armor with
-    | Padded -> 11 + dex
-    | Leather -> 11 + dex
-    | StuddedLeather -> 12 + dex
-    | Hide -> 12 + min 2 dex
-    | ChainShirt -> 13 + min 2 dex
-    | ScaleMail -> 14 + min 2 dex
-    | BreastPlate -> 14 + min 2 dex
-    | HalfPlate -> 15 + min 2 dex
-    | RingMail -> 14
-    | ChainMail -> 16
-    | Splint -> 17
-    | Plate -> 18
-    |> match gear.Shield with
-        | true -> (+) 2
-        | false -> id
+type Protection = 
+    | Natural of Bonus : int
+    | Equipment of ProtectiveGear
+
+let armorClass protection dex =
+    match protection with
+    | Natural(bonus) -> 10 + dex + bonus
+    | Equipment(gear) ->
+        match gear.Armor with
+        | None -> 10 + dex
+        | Some(armor) ->
+            match armor with
+            | Padded -> 11 + dex
+            | Leather -> 11 + dex
+            | StuddedLeather -> 12 + dex
+            | Hide -> 12 + min 2 dex
+            | ChainShirt -> 13 + min 2 dex
+            | ScaleMail -> 14 + min 2 dex
+            | BreastPlate -> 14 + min 2 dex
+            | HalfPlate -> 15 + min 2 dex
+            | RingMail -> 14
+            | ChainMail -> 16
+            | Splint -> 17
+            | Plate -> 18
+        |> match gear.Shield with
+            | true -> (+) 2
+            | false -> id
 
 [<AutoOpen>]
 module Ability = 
@@ -185,7 +194,7 @@ type Monster = {
     Size: Size
     CreatureType: CreatureType
     Alignment: Alignment
-    Armor: ProtectiveGear
+    Protection: Protection
     Speed: int
     HitDice: int
     Abilities: Abilities
@@ -195,4 +204,4 @@ type Monster = {
         monster.HitDice * hitPointsDice monster.Size
         + monster.HitDice * modifier monster.Abilities CON
     static member AC (monster:Monster) =
-        armorClass monster.Armor (modifier monster.Abilities DEX)
+        armorClass monster.Protection (modifier monster.Abilities DEX)

@@ -37,6 +37,34 @@ module Markdown =
         | Social.Neutral,Neutral -> "neutral"
         | _ -> sprintf "%s %s" social moral
 
+    let armorClass (monster:Monster) =
+        let ac = Monster.AC monster
+        let equipment = 
+            match monster.Protection with
+            | Natural(_) -> [ "natural" ]
+            | Equipment(gear) ->
+                [
+                    yield 
+                        match gear.Armor with 
+                        | None -> "unarmored"
+                        | Some(armor) ->
+                            match armor with
+                            | Padded -> "padded"
+                            | Leather -> "leather"
+                            | StuddedLeather -> "studded leather"
+                            | Hide -> "hide"
+                            | ChainShirt -> "chain shirt"
+                            | ScaleMail -> "scale mail"
+                            | BreastPlate -> "breast plate"
+                            | HalfPlate -> "half plate"
+                            | RingMail -> "ring mail"
+                            | ChainMail -> "chain mail"
+                            | Splint -> "splint"
+                            | Plate -> "plate"
+                    if gear.Shield then yield "shield"    
+                ]
+        sprintf "**Armor Class** %i (%s)" ac (equipment |> String.concat ", ") 
+
     let abilities (abilities:Ability.Abilities) =
         [
             Ability.abilities |> List.map (sprintf "%A") |> String.concat " | "
@@ -52,7 +80,7 @@ module Markdown =
             sprintf "# %s" monster.Name |> titleCase      
             sprintf "_%A %A, %s_" monster.Size monster.CreatureType (alignment monster.Alignment)
             
-            sprintf "**Armor Class** %i" (Monster.AC monster)
+            monster |> armorClass
             sprintf "**Hit Points** %i (%s)" (hitPoints |> Roll.Average) (hitPoints |> Roll.Render)
             sprintf "**Speed** %i ft." monster.Speed
 
