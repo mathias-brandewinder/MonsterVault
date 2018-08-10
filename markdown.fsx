@@ -21,6 +21,9 @@ module Markdown =
         then txt
         else (txt.[0] |> Char.ToUpperInvariant |> string) + txt.Substring(1)
 
+    let paragraphs (blocks:string seq) = blocks |> String.concat "  \n"
+    let commaSeparated (blocks:string seq) = blocks |> String.concat ", "
+
     let alignment alignment =
         let social,moral = alignment
         let social = 
@@ -41,7 +44,7 @@ module Markdown =
         let ac = Monster.AC monster
         let equipment = 
             match monster.Protection with
-            | Natural(_) -> [ "natural" ]
+            | Natural(_) -> "natural"
             | Equipment(gear) ->
                 [
                     yield 
@@ -63,7 +66,8 @@ module Markdown =
                             | Plate -> "plate"
                     if gear.Shield then yield "shield"    
                 ]
-        sprintf "**Armor Class** %i (%s)" ac (equipment |> String.concat ", ") 
+                |> commaSeparated
+        sprintf "**Armor Class** %i (%s)" ac equipment 
 
     let abilities (abilities:Ability.Abilities) =
         [
@@ -72,7 +76,7 @@ module Markdown =
             Ability.abilities |> List.map (Ability.score abilities >> sprintf "%i") |> String.concat " | "
             Ability.abilities |> List.map (Ability.modifier abilities >> signed) |> String.concat " | "
         ]
-        |> String.concat "  \n"
+        |> paragraphs
 
     let monsterSheet (monster:Monster) =
         let hitPoints = Monster.HitPoints monster
@@ -86,4 +90,4 @@ module Markdown =
 
             monster.Abilities |> abilities 
         ]
-        |> String.concat "  \n"
+        |> paragraphs

@@ -37,11 +37,10 @@ let goblinBoss = {
     goblin with
         Name = "Goblin Boss"
         HitDice = 6
-        Protection = 
-            goblin.Protection 
-                // with
-                // Armor = ChainShirt
-               
+        Protection = Equipment { 
+            Armor = Some ChainShirt 
+            Shield = true
+            }               
         Abilities = {
             goblin.Abilities with
                 Bonuses = [
