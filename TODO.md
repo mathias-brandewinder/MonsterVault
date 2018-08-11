@@ -2,6 +2,7 @@
 
 - Figure out nicer template modification when armor changes
 - Find list of Monster Tags
+? Is there an equivalent to Proficiency for Monsters
 ? Mounts can wear some form of armor, too - how should it be represented
 ? Potential issue: Roll rendering for negative values, ex. 2d6-2
 ? Remove/filter out Value 0 from rolls
