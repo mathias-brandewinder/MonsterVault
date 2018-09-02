@@ -205,3 +205,32 @@ type Monster = {
         + monster.HitDice * modifier monster.Abilities CON
     static member AC (monster:Monster) =
         armorClass monster.Protection (modifier monster.Abilities DEX)
+
+let proficiencyBonus level =
+    if level <= 4 then 2
+    elif level <= 8 then 3
+    elif level <= 12 then 4
+    elif level <= 16 then 5
+    else 6
+
+type Attack = 
+    | Melee
+    | Ranged
+
+type Weapon = {
+    Damage: Roll
+    Attack: Attack
+    }
+
+let attackModifiers (abilities:Abilities) (level:int) (weapon:Weapon) =
+    let hit = 
+        proficiencyBonus level 
+        +
+        match weapon.Attack with
+        | Melee -> modifier abilities STR
+        | Ranged -> modifier abilities DEX
+    let damage = 
+        match weapon.Attack with
+        | Melee -> weapon.Damage + modifier abilities STR
+        | Ranged(_) -> weapon.Damage + modifier abilities DEX
+    hit, damage

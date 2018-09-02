@@ -1,5 +1,11 @@
 # TODO / ISSUES
 
+- Finesse weapons
+- Two-Handed weapons
+- Two-Weapons fighting
+- Proficiency, Light/Heavy weapons
+- Thrown weapons
+- Versatile weapons 
 - Figure out nicer template modification when armor changes
 - Find list of Monster Tags
 ? Is there an equivalent to Proficiency for Monsters

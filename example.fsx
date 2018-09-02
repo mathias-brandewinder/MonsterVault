@@ -110,3 +110,16 @@ hobgoblinCaptain |> Monster.HitPoints
 hobgoblinCaptain |> Monster.HitPoints |> Roll.Average
 
 let sheet = hobgoblinCaptain |> Markdown.monsterSheet
+
+let scimitar = {
+    Damage = Roll (1,d6)
+    Attack = Melee
+    }
+
+let shortbow = {
+    Damage = Roll (1, d6)
+    Attack = Ranged
+    }
+
+attackModifiers goblin.Abilities goblin.HitDice scimitar
+attackModifiers goblin.Abilities goblin.HitDice shortbow
