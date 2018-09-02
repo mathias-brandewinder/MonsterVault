@@ -6,6 +6,8 @@
 - Proficiency, Light/Heavy weapons
 - Thrown weapons
 - Versatile weapons 
+- Multi Attacks
+- Representing Advantage, Disadvantage Roll
 - Figure out nicer template modification when armor changes
 - Find list of Monster Tags
 ? Is there an equivalent to Proficiency for Monsters

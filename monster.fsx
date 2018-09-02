@@ -213,24 +213,146 @@ let proficiencyBonus level =
     elif level <= 16 then 5
     else 6
 
-type Attack = 
-    | Melee
-    | Ranged
+[<RequireQualifiedAccess>]
+module Weapon = 
+
+    type Proficiency = 
+        | Simple 
+        | Martial 
+
+    type Handling = 
+        | Light 
+        | Normal 
+        | Heavy 
+
+    type Grip = 
+        | SingleHanded of Versatile: Roll option
+        | TwoHanded
+
+    type MeleeInfo = {
+        Range: int
+        }
+
+    type RangedInfo = {
+        ShortRange: int
+        LongRange: int
+        }
+
+    type ThrownInfo = {
+        Melee: MeleeInfo
+        Ranged: RangedInfo
+        }
+
+    type Usage = 
+        | Melee of MeleeInfo
+        | Ranged of RangedInfo
+        | Thrown of MeleeInfo * RangedInfo
 
 type Weapon = {
+    Name: string
+    Proficiency: Weapon.Proficiency
+    Handling: Weapon.Handling
+    Grip: Weapon.Grip
+    Finesse: bool
     Damage: Roll
-    Attack: Attack
+    Usage: Weapon.Usage
     }
 
-let attackModifiers (abilities:Abilities) (level:int) (weapon:Weapon) =
-    let hit = 
-        proficiencyBonus level 
-        +
-        match weapon.Attack with
-        | Melee -> modifier abilities STR
-        | Ranged -> modifier abilities DEX
-    let damage = 
-        match weapon.Attack with
-        | Melee -> weapon.Damage + modifier abilities STR
-        | Ranged(_) -> weapon.Damage + modifier abilities DEX
-    hit, damage
+type AttackGrip = 
+    | SingleHanded
+    | TwoHanded
+    | OffHand
+
+type AttackInfo = {
+    Grip: AttackGrip
+    HitBonus: int
+    Damage: Roll
+    DamageBonus: int
+    }
+
+type Attack = 
+    | Melee of Weapon.MeleeInfo
+    | Ranged of Weapon.RangedInfo
+
+let meleeAttacks 
+    (abilities:Abilities)
+    (proficienty:Weapon.Proficiency, level:int) 
+    (weapon:Weapon) =
+        // TODO compute bonuses
+        match weapon.Usage with
+        | Weapon.Thrown(info,_)
+        | Weapon.Melee(info) -> 
+            [
+                match weapon.Grip with
+                | Weapon.SingleHanded(versatile) ->
+                    yield { 
+                        Grip = SingleHanded
+                        HitBonus = 0
+                        Damage = weapon.Damage
+                        DamageBonus = 0
+                        }
+                    match versatile with
+                    | None -> ignore ()
+                    | Some(versatileRoll) ->
+                        yield { 
+                            Grip = TwoHanded
+                            HitBonus = 0
+                            Damage = versatileRoll
+                            DamageBonus = 0
+                            }
+                    match weapon.Handling with
+                    | Light -> 
+                        yield { 
+                            Grip = OffHand
+                            HitBonus = 0
+                            Damage = weapon.Damage
+                            DamageBonus = 0
+                            }
+                    | _ -> ignore () 
+                | Weapon.TwoHanded ->
+                    yield { 
+                        Grip = TwoHanded
+                        HitBonus = 0
+                        Damage = weapon.Damage
+                        DamageBonus = 0
+                        }
+            ]
+            |> List.map (fun attack -> Melee(info), attack)
+        | _ -> []
+
+let rangedAttacks 
+    (abilities:Abilities)
+    (proficienty:Weapon.Proficiency, level:int) 
+    (weapon:Weapon) =
+        // TODO compute bonuses
+        match weapon.Usage with
+        | Weapon.Thrown(_,info)
+        | Weapon.Ranged(info) -> 
+            [
+                match weapon.Grip with
+                | Weapon.SingleHanded(_) ->
+                    yield { 
+                        Grip = SingleHanded
+                        HitBonus = 0
+                        Damage = weapon.Damage
+                        DamageBonus = 0
+                        }
+                | Weapon.TwoHanded ->
+                    yield { 
+                        Grip = TwoHanded
+                        HitBonus = 0
+                        Damage = weapon.Damage
+                        DamageBonus = 0
+                        }
+            ]
+            |> List.map (fun attack -> Ranged(info), attack)
+        | _ -> []
+
+let attacks 
+    (abilities:Abilities)
+    (proficiency:Weapon.Proficiency, level:int) 
+    (weapon:Weapon) =
+        [
+            yield! meleeAttacks abilities (proficiency,level) weapon
+            yield! rangedAttacks abilities (proficiency,level) weapon
+        ]

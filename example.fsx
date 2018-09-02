@@ -112,14 +112,39 @@ hobgoblinCaptain |> Monster.HitPoints |> Roll.Average
 let sheet = hobgoblinCaptain |> Markdown.monsterSheet
 
 let scimitar = {
-    Damage = Roll (1,d6)
-    Attack = Melee
+    Name = "scimitar"
+    Proficiency = Weapon.Simple
+    Handling = Weapon.Light
+    Grip = Weapon.SingleHanded(None)
+    Finesse = true
+    Damage = Roll (1, d6)
+    Usage = Weapon.Melee { Range = 5 }
     }
 
 let shortbow = {
+    Name = "shortbow"
+    Proficiency = Weapon.Simple
+    Handling = Weapon.Light
+    Grip = Weapon.SingleHanded(None)
+    Finesse = false
     Damage = Roll (1, d6)
-    Attack = Ranged
+    Usage = Weapon.Ranged { ShortRange = 80; LongRange = 320 }
     }
 
-attackModifiers goblin.Abilities goblin.HitDice scimitar
-attackModifiers goblin.Abilities goblin.HitDice shortbow
+let spear = {
+    Name = "spear"
+    Proficiency = Weapon.Simple
+    Handling = Weapon.Light
+    Grip = Weapon.SingleHanded(Some(Roll(1, d8)))
+    Finesse = false
+    Damage = Roll (1, d6)
+    Usage = 
+        Weapon.Thrown (
+            { Range = 5 }, 
+            { ShortRange = 80; LongRange = 320 }
+        )
+    }
+
+attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) scimitar
+attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) shortbow
+attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) spear
