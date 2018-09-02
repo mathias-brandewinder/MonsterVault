@@ -141,7 +141,7 @@ let spear = {
     Usage = 
         Weapon.Thrown (
             { Range = 5 }, 
-            { ShortRange = 80; LongRange = 320 }
+            { ShortRange = 20; LongRange = 60 }
         )
     }
 

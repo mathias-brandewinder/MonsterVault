@@ -276,9 +276,20 @@ type Attack =
 
 let meleeAttacks 
     (abilities:Abilities)
-    (proficienty:Weapon.Proficiency, level:int) 
+    (proficiency:Weapon.Proficiency, level:int) 
     (weapon:Weapon) =
-        // TODO compute bonuses
+
+        let ability = 
+            match weapon.Finesse with
+            | true ->  [ STR; DEX ] 
+            | false -> [ STR ]
+            |> Seq.maxBy (modifier abilities)
+            |> modifier abilities
+        let proficiency = 
+            match weapon.Proficiency, proficiency with
+            | Martial, Simple -> 0
+            | _ -> proficiencyBonus level
+
         match weapon.Usage with
         | Weapon.Thrown(info,_)
         | Weapon.Melee(info) -> 
@@ -287,34 +298,34 @@ let meleeAttacks
                 | Weapon.SingleHanded(versatile) ->
                     yield { 
                         Grip = SingleHanded
-                        HitBonus = 0
+                        HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = 0
+                        DamageBonus = ability + proficiency
                         }
                     match versatile with
                     | None -> ignore ()
                     | Some(versatileRoll) ->
                         yield { 
                             Grip = TwoHanded
-                            HitBonus = 0
+                            HitBonus = ability + proficiency
                             Damage = versatileRoll
-                            DamageBonus = 0
+                            DamageBonus = ability + proficiency
                             }
                     match weapon.Handling with
                     | Light -> 
                         yield { 
                             Grip = OffHand
-                            HitBonus = 0
+                            HitBonus = ability + proficiency
                             Damage = weapon.Damage
-                            DamageBonus = 0
+                            DamageBonus = min ability 0 + proficiency
                             }
                     | _ -> ignore () 
                 | Weapon.TwoHanded ->
                     yield { 
                         Grip = TwoHanded
-                        HitBonus = 0
+                        HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = 0
+                        DamageBonus = ability + proficiency
                         }
             ]
             |> List.map (fun attack -> Melee(info), attack)
@@ -322,9 +333,20 @@ let meleeAttacks
 
 let rangedAttacks 
     (abilities:Abilities)
-    (proficienty:Weapon.Proficiency, level:int) 
+    (proficiency:Weapon.Proficiency, level:int) 
     (weapon:Weapon) =
-        // TODO compute bonuses
+
+        let ability = 
+            match weapon.Finesse with
+            | true ->  [ STR; DEX ] 
+            | false -> [ DEX ]
+            |> Seq.maxBy (modifier abilities)
+            |> modifier abilities
+        let proficiency = 
+            match weapon.Proficiency, proficiency with
+            | Martial, Simple -> 0
+            | _ -> proficiencyBonus level
+
         match weapon.Usage with
         | Weapon.Thrown(_,info)
         | Weapon.Ranged(info) -> 
@@ -333,16 +355,16 @@ let rangedAttacks
                 | Weapon.SingleHanded(_) ->
                     yield { 
                         Grip = SingleHanded
-                        HitBonus = 0
+                        HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = 0
+                        DamageBonus = ability + proficiency
                         }
                 | Weapon.TwoHanded ->
                     yield { 
                         Grip = TwoHanded
-                        HitBonus = 0
+                        HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = 0
+                        DamageBonus = ability + proficiency
                         }
             ]
             |> List.map (fun attack -> Ranged(info), attack)
