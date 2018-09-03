@@ -154,6 +154,7 @@ type AttackGrip =
     | OffHand
      
 type AttackInfo = {
+    Weapon: string
     Grip: AttackGrip
     HitBonus: int
     Damage: Roll
@@ -287,6 +288,7 @@ let meleeAttacks
                 match weapon.Grip with
                 | Weapon.SingleHanded(versatile) ->
                     yield { 
+                        Weapon = weapon.Name
                         Grip = SingleHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
@@ -297,6 +299,7 @@ let meleeAttacks
                     | None -> ignore ()
                     | Some(versatileRoll) ->
                         yield { 
+                            Weapon = weapon.Name
                             Grip = TwoHanded
                             HitBonus = ability + proficiency
                             Damage = versatileRoll
@@ -306,6 +309,7 @@ let meleeAttacks
                     match weapon.Handling with
                     | Weapon.Light -> 
                         yield { 
+                            Weapon = weapon.Name
                             Grip = OffHand
                             HitBonus = ability + proficiency
                             Damage = weapon.Damage
@@ -315,6 +319,7 @@ let meleeAttacks
                     | _ -> ignore () 
                 | Weapon.TwoHanded ->
                     yield { 
+                        Weapon = weapon.Name
                         Grip = TwoHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
@@ -348,6 +353,7 @@ let rangedAttacks
                 match weapon.Grip with
                 | Weapon.SingleHanded(_) ->
                     yield { 
+                        Weapon = weapon.Name
                         Grip = SingleHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
@@ -356,6 +362,7 @@ let rangedAttacks
                         }
                 | Weapon.TwoHanded ->
                     yield { 
+                        Weapon = weapon.Name
                         Grip = TwoHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
@@ -374,7 +381,7 @@ let attacks
             yield! meleeAttacks abilities (proficiency,level) weapon
             yield! rangedAttacks abilities (proficiency,level) weapon
         ]
-        
+
 let hitPointsDice (size:Size) =
     match size with
     | Tiny -> d4
@@ -393,6 +400,8 @@ type Monster = {
     Speed: int
     HitDice: int
     Abilities: Abilities
+    Equipment: Weapon list
+    Proficiency: Weapon.Proficiency
     }
     with
     static member HitPoints (monster:Monster) = 
@@ -400,3 +409,8 @@ type Monster = {
         + monster.HitDice * modifier monster.Abilities CON
     static member AC (monster:Monster) =
         armorClass monster.Protection (modifier monster.Abilities DEX)
+    static member Attacks (monster:Monster) =
+        let attacks = 
+            attacks monster.Abilities (monster.Proficiency, monster.HitDice) 
+        monster.Equipment
+        |> List.map attacks
