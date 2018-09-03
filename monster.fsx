@@ -81,6 +81,90 @@ type Moral =
 
 type Alignment = Social * Moral 
 
+type DamageType = 
+    | Acid 
+    | Bludgeoning 
+    | Cold 
+    | Fire 
+    | Force 
+    | Lightning 
+    | Necrotic 
+    | Piercing 
+    | Poison 
+    | Psychic 
+    | Radiant 
+    | Slashing 
+    | Thunder 
+
+let proficiencyBonus level =
+    if level <= 4 then 2
+    elif level <= 8 then 3
+    elif level <= 12 then 4
+    elif level <= 16 then 5
+    else 6
+
+[<RequireQualifiedAccess>]
+module Weapon = 
+
+    type Proficiency = 
+        | Simple 
+        | Martial 
+
+    type Handling = 
+        | Light 
+        | Normal 
+        | Heavy 
+
+    type Grip = 
+        | SingleHanded of Versatile: Roll option
+        | TwoHanded
+
+    type MeleeInfo = {
+        Range: int
+        }
+
+    type RangedInfo = {
+        ShortRange: int
+        LongRange: int
+        }
+
+    type ThrownInfo = {
+        Melee: MeleeInfo
+        Ranged: RangedInfo
+        }
+
+    type Usage = 
+        | Melee of MeleeInfo
+        | Ranged of RangedInfo
+        | Thrown of MeleeInfo * RangedInfo
+
+type Weapon = {
+    Name: string
+    Proficiency: Weapon.Proficiency
+    Handling: Weapon.Handling
+    Grip: Weapon.Grip
+    Finesse: bool
+    Damage: Roll
+    DamageType: DamageType
+    Usage: Weapon.Usage
+    }
+type AttackGrip = 
+    | SingleHanded
+    | TwoHanded
+    | OffHand
+     
+type AttackInfo = {
+    Grip: AttackGrip
+    HitBonus: int
+    Damage: Roll
+    DamageBonus: int
+    DamageType: DamageType
+    }
+
+type Attack = 
+    | Melee of Weapon.MeleeInfo
+    | Ranged of Weapon.RangedInfo
+
 type Armor = 
     | Padded 
     | Leather 
@@ -179,117 +263,6 @@ module Ability =
         ability
         |> score abilities
         |> scoreToModifier
-
-let hitPointsDice (size:Size) =
-    match size with
-    | Tiny -> d4
-    | Small -> d6 
-    | Medium -> d8
-    | Large -> d10
-    | Huge -> d12
-    | Gargantuan -> d20
-
-type Monster = {
-    Name: string
-    Size: Size
-    CreatureType: CreatureType
-    Alignment: Alignment
-    Protection: Protection
-    Speed: int
-    HitDice: int
-    Abilities: Abilities
-    }
-    with
-    static member HitPoints (monster:Monster) = 
-        monster.HitDice * hitPointsDice monster.Size
-        + monster.HitDice * modifier monster.Abilities CON
-    static member AC (monster:Monster) =
-        armorClass monster.Protection (modifier monster.Abilities DEX)
-
-let proficiencyBonus level =
-    if level <= 4 then 2
-    elif level <= 8 then 3
-    elif level <= 12 then 4
-    elif level <= 16 then 5
-    else 6
-
-[<RequireQualifiedAccess>]
-module Weapon = 
-
-    type Proficiency = 
-        | Simple 
-        | Martial 
-
-    type Handling = 
-        | Light 
-        | Normal 
-        | Heavy 
-
-    type Grip = 
-        | SingleHanded of Versatile: Roll option
-        | TwoHanded
-
-    type MeleeInfo = {
-        Range: int
-        }
-
-    type RangedInfo = {
-        ShortRange: int
-        LongRange: int
-        }
-
-    type ThrownInfo = {
-        Melee: MeleeInfo
-        Ranged: RangedInfo
-        }
-
-    type Usage = 
-        | Melee of MeleeInfo
-        | Ranged of RangedInfo
-        | Thrown of MeleeInfo * RangedInfo
-
-type DamageType = 
-    | Acid 
-    | Bludgeoning 
-    | Cold 
-    | Fire 
-    | Force 
-    | Lightning 
-    | Necrotic 
-    | Piercing 
-    | Poison 
-    | Psychic 
-    | Radiant 
-    | Slashing 
-    | Thunder 
-
-type Weapon = {
-    Name: string
-    Proficiency: Weapon.Proficiency
-    Handling: Weapon.Handling
-    Grip: Weapon.Grip
-    Finesse: bool
-    Damage: Roll
-    DamageType: DamageType
-    Usage: Weapon.Usage
-    }
-
-type AttackGrip = 
-    | SingleHanded
-    | TwoHanded
-    | OffHand
-     
-type AttackInfo = {
-    Grip: AttackGrip
-    HitBonus: int
-    Damage: Roll
-    DamageBonus: int
-    DamageType: DamageType
-    }
-
-type Attack = 
-    | Melee of Weapon.MeleeInfo
-    | Ranged of Weapon.RangedInfo
 
 let meleeAttacks 
     (abilities:Abilities)
@@ -401,3 +374,29 @@ let attacks
             yield! meleeAttacks abilities (proficiency,level) weapon
             yield! rangedAttacks abilities (proficiency,level) weapon
         ]
+        
+let hitPointsDice (size:Size) =
+    match size with
+    | Tiny -> d4
+    | Small -> d6 
+    | Medium -> d8
+    | Large -> d10
+    | Huge -> d12
+    | Gargantuan -> d20
+
+type Monster = {
+    Name: string
+    Size: Size
+    CreatureType: CreatureType
+    Alignment: Alignment
+    Protection: Protection
+    Speed: int
+    HitDice: int
+    Abilities: Abilities
+    }
+    with
+    static member HitPoints (monster:Monster) = 
+        monster.HitDice * hitPointsDice monster.Size
+        + monster.HitDice * modifier monster.Abilities CON
+    static member AC (monster:Monster) =
+        armorClass monster.Protection (modifier monster.Abilities DEX)
