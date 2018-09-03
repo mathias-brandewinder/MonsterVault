@@ -338,7 +338,10 @@ let rangedAttacks
         let ability = 
             match weapon.Finesse with
             | true ->  [ STR; DEX ] 
-            | false -> [ DEX ]
+            | false -> 
+                match weapon.Usage with
+                | Weapon.Thrown(_) -> [ STR ]
+                | _ -> [ DEX ]
             |> Seq.maxBy (modifier abilities)
             |> modifier abilities
         let proficiency = 

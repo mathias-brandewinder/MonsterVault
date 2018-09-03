@@ -203,11 +203,6 @@ hobgoblinCaptain |> Monster.HitPoints |> Roll.Average
 let sheet = hobgoblinCaptain |> Markdown.monsterSheet
 
 
-
-attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) scimitar
-attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) shortbow
-attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) spear
-
 goblin |> Monster.Attacks
 goblinBoss |> Monster.Attacks
 hobgoblin |> Monster.Attacks
