@@ -118,6 +118,7 @@ let scimitar = {
     Grip = Weapon.SingleHanded(None)
     Finesse = true
     Damage = Roll (1, d6)
+    DamageType = Slashing
     Usage = Weapon.Melee { Range = 5 }
     }
 
@@ -128,6 +129,7 @@ let shortbow = {
     Grip = Weapon.SingleHanded(None)
     Finesse = false
     Damage = Roll (1, d6)
+    DamageType = Piercing
     Usage = Weapon.Ranged { ShortRange = 80; LongRange = 320 }
     }
 
@@ -138,6 +140,7 @@ let spear = {
     Grip = Weapon.SingleHanded(Some(Roll(1, d8)))
     Finesse = false
     Damage = Roll (1, d6)
+    DamageType = Piercing
     Usage = 
         Weapon.Thrown (
             { Range = 5 }, 

@@ -248,6 +248,21 @@ module Weapon =
         | Ranged of RangedInfo
         | Thrown of MeleeInfo * RangedInfo
 
+type DamageType = 
+    | Acid 
+    | Bludgeoning 
+    | Cold 
+    | Fire 
+    | Force 
+    | Lightning 
+    | Necrotic 
+    | Piercing 
+    | Poison 
+    | Psychic 
+    | Radiant 
+    | Slashing 
+    | Thunder 
+
 type Weapon = {
     Name: string
     Proficiency: Weapon.Proficiency
@@ -255,6 +270,7 @@ type Weapon = {
     Grip: Weapon.Grip
     Finesse: bool
     Damage: Roll
+    DamageType: DamageType
     Usage: Weapon.Usage
     }
 
@@ -262,12 +278,13 @@ type AttackGrip =
     | SingleHanded
     | TwoHanded
     | OffHand
-
+     
 type AttackInfo = {
     Grip: AttackGrip
     HitBonus: int
     Damage: Roll
     DamageBonus: int
+    DamageType: DamageType
     }
 
 type Attack = 
@@ -287,7 +304,7 @@ let meleeAttacks
             |> modifier abilities
         let proficiency = 
             match weapon.Proficiency, proficiency with
-            | Martial, Simple -> 0
+            | Weapon.Martial, Weapon.Simple -> 0
             | _ -> proficiencyBonus level
 
         match weapon.Usage with
@@ -300,7 +317,8 @@ let meleeAttacks
                         Grip = SingleHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = ability + proficiency
+                        DamageBonus = ability
+                        DamageType = weapon.DamageType
                         }
                     match versatile with
                     | None -> ignore ()
@@ -309,15 +327,17 @@ let meleeAttacks
                             Grip = TwoHanded
                             HitBonus = ability + proficiency
                             Damage = versatileRoll
-                            DamageBonus = ability + proficiency
+                            DamageBonus = ability
+                            DamageType = weapon.DamageType
                             }
                     match weapon.Handling with
-                    | Light -> 
+                    | Weapon.Light -> 
                         yield { 
                             Grip = OffHand
                             HitBonus = ability + proficiency
                             Damage = weapon.Damage
-                            DamageBonus = min ability 0 + proficiency
+                            DamageBonus = min ability 0
+                            DamageType = weapon.DamageType
                             }
                     | _ -> ignore () 
                 | Weapon.TwoHanded ->
@@ -325,7 +345,8 @@ let meleeAttacks
                         Grip = TwoHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = ability + proficiency
+                        DamageBonus = ability
+                        DamageType = weapon.DamageType
                         }
             ]
             |> List.map (fun attack -> Melee(info), attack)
@@ -344,7 +365,7 @@ let rangedAttacks
             |> modifier abilities
         let proficiency = 
             match weapon.Proficiency, proficiency with
-            | Martial, Simple -> 0
+            | Weapon.Martial, Weapon.Simple -> 0
             | _ -> proficiencyBonus level
 
         match weapon.Usage with
@@ -357,14 +378,16 @@ let rangedAttacks
                         Grip = SingleHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = ability + proficiency
+                        DamageBonus = ability
+                        DamageType = weapon.DamageType
                         }
                 | Weapon.TwoHanded ->
                     yield { 
                         Grip = TwoHanded
                         HitBonus = ability + proficiency
                         Damage = weapon.Damage
-                        DamageBonus = ability + proficiency
+                        DamageBonus = ability
+                        DamageType = weapon.DamageType
                         }
             ]
             |> List.map (fun attack -> Ranged(info), attack)
