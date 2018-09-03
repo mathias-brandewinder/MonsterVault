@@ -5,6 +5,91 @@ open Monster.Ability
 #load "monster.fsx"
 open Markdown
 
+let scimitar = {
+    Name = "scimitar"
+    Proficiency = Weapon.Simple
+    Handling = Weapon.Light
+    Grip = Weapon.SingleHanded(None)
+    Finesse = true
+    Damage = Roll (1, d6)
+    DamageType = Slashing
+    Usage = Weapon.Melee { Range = 5 }
+    }
+
+let shortbow = {
+    Name = "shortbow"
+    Proficiency = Weapon.Simple
+    Handling = Weapon.Light
+    Grip = Weapon.SingleHanded(None)
+    Finesse = false
+    Damage = Roll (1, d6)
+    DamageType = Piercing
+    Usage = Weapon.Ranged { ShortRange = 80; LongRange = 320 }
+    }
+
+let javelin = {
+    Name = "javelin"
+    Proficiency = Weapon.Simple
+    Handling = Weapon.Normal
+    Grip = Weapon.SingleHanded(None)
+    Finesse = false
+    Damage = Roll (1, d6)
+    DamageType = Piercing
+    Usage = 
+        Weapon.Thrown ( 
+            { Range = 5 }, 
+            { ShortRange = 30; LongRange = 120 }
+        )
+    }
+
+let longsword = {
+    Name = "longsword"
+    Proficiency = Weapon.Martial
+    Handling = Weapon.Normal
+    Grip = Weapon.SingleHanded(Some(Roll(1, d10)))
+    Finesse = false
+    Damage = Roll (1, d8)
+    DamageType = Slashing
+    Usage = Weapon.Melee { Range = 5 }
+    }
+
+let longbow = {
+    Name = "longbow"
+    Proficiency = Weapon.Martial
+    Handling = Weapon.Heavy
+    Grip = Weapon.TwoHanded
+    Finesse = false
+    Damage = Roll (1, d8)
+    DamageType = Piercing
+    Usage = Weapon.Ranged { ShortRange = 150; LongRange = 600 }
+    }
+
+let greatsword = {
+    Name = "greatsword"
+    Proficiency = Weapon.Martial
+    Handling = Weapon.Heavy
+    Grip = Weapon.TwoHanded
+    Finesse = false
+    Damage = Roll (2, d6)
+    DamageType = Slashing
+    Usage = Weapon.Melee { Range = 5 }
+    }
+
+let spear = {
+    Name = "spear"
+    Proficiency = Weapon.Simple
+    Handling = Weapon.Light
+    Grip = Weapon.SingleHanded(Some(Roll(1, d8)))
+    Finesse = false
+    Damage = Roll (1, d6)
+    DamageType = Piercing
+    Usage = 
+        Weapon.Thrown (
+            { Range = 5 }, 
+            { ShortRange = 20; LongRange = 60 }
+        )
+    }
+
 let goblin = {
     Name = "Goblin"
     HitDice = 2
@@ -28,6 +113,8 @@ let goblin = {
             }
         Bonuses = [ ]
         }
+    Equipment = [ scimitar; shortbow ]
+    Proficiency = Weapon.Simple
     }
 
 score goblin.Abilities STR
@@ -48,6 +135,7 @@ let goblinBoss = {
                     { Ability = CHA; Bonus = 2 }
                     ]
         }
+        Equipment = [ scimitar; javelin ]
     }
 
 score goblinBoss.Abilities STR
@@ -80,6 +168,8 @@ let hobgoblin = {
             }
         Bonuses = [ ]
         }
+    Equipment = [ longsword; longbow ]
+    Proficiency = Weapon.Martial
     }
 
 let hobgoblinCaptain = {
@@ -101,6 +191,7 @@ let hobgoblinCaptain = {
                     { Ability = CHA; Bonus = 4 }
                     ]
         }
+        Equipment = [ greatsword; javelin ]
     }
 
 hobgoblin |> Monster.HitPoints
@@ -111,43 +202,15 @@ hobgoblinCaptain |> Monster.HitPoints |> Roll.Average
 
 let sheet = hobgoblinCaptain |> Markdown.monsterSheet
 
-let scimitar = {
-    Name = "scimitar"
-    Proficiency = Weapon.Simple
-    Handling = Weapon.Light
-    Grip = Weapon.SingleHanded(None)
-    Finesse = true
-    Damage = Roll (1, d6)
-    DamageType = Slashing
-    Usage = Weapon.Melee { Range = 5 }
-    }
 
-let shortbow = {
-    Name = "shortbow"
-    Proficiency = Weapon.Simple
-    Handling = Weapon.Light
-    Grip = Weapon.SingleHanded(None)
-    Finesse = false
-    Damage = Roll (1, d6)
-    DamageType = Piercing
-    Usage = Weapon.Ranged { ShortRange = 80; LongRange = 320 }
-    }
-
-let spear = {
-    Name = "spear"
-    Proficiency = Weapon.Simple
-    Handling = Weapon.Light
-    Grip = Weapon.SingleHanded(Some(Roll(1, d8)))
-    Finesse = false
-    Damage = Roll (1, d6)
-    DamageType = Piercing
-    Usage = 
-        Weapon.Thrown (
-            { Range = 5 }, 
-            { ShortRange = 20; LongRange = 60 }
-        )
-    }
 
 attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) scimitar
 attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) shortbow
 attacks goblin.Abilities (Weapon.Simple, goblin.HitDice) spear
+
+goblin |> Monster.Attacks
+goblinBoss |> Monster.Attacks
+hobgoblin |> Monster.Attacks
+// discrepancy: hit bonus computed as 5, MM shows 4
+// probably proficiency bonus / level is incorrect?
+hobgoblinCaptain |> Monster.Attacks
