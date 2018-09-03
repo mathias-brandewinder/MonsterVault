@@ -96,6 +96,22 @@ module Markdown =
         ]
         |> paragraphs
 
+    let attacks (monster:Monster) =
+        Monster.Attacks monster
+        |> List.filter (fun (_,info) -> 
+            info.Grip <> AttackGrip.OffHand)
+        |> List.sortBy (fun (_,info) -> info.Weapon)
+        |> List.map (fun (attack,info) ->
+            let damageRoll = info.Damage + info.DamageBonus
+            sprintf "**%s.** _%s Weapon Attack_: + %i to hit. _Hit_ %i (%s)" 
+                info.Weapon 
+                (attack |> function | Melee(_) -> "Melee" | Ranged(_) -> "Ranged")
+                info.HitBonus
+                (Roll.Average damageRoll)
+                (Roll.Render damageRoll)
+            )
+        |> paragraphs
+
     let monsterSheet (monster:Monster) =
         let hitPoints = Monster.HitPoints monster
         [
@@ -107,5 +123,9 @@ module Markdown =
             sprintf "**Speed** %i ft." monster.Speed
 
             monster.Abilities |> abilities 
+
+            "## Actions"
+
+            monster |> attacks
         ]
         |> paragraphs

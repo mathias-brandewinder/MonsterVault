@@ -148,6 +148,7 @@ type Weapon = {
     DamageType: DamageType
     Usage: Weapon.Usage
     }
+    
 type AttackGrip = 
     | SingleHanded
     | TwoHanded
@@ -416,4 +417,4 @@ type Monster = {
         let attacks = 
             attacks monster.Abilities (monster.Proficiency, monster.HitDice) 
         monster.Equipment
-        |> List.map attacks
+        |> List.collect attacks
