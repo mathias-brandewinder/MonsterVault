@@ -268,7 +268,8 @@ module Ability =
 
 let meleeAttacks 
     (abilities:Abilities)
-    (proficiency:Weapon.Proficiency, level:int) 
+    (proficiency:Weapon.Proficiency) 
+    (level:int) 
     (weapon:Weapon) =
 
         let ability = 
@@ -333,7 +334,8 @@ let meleeAttacks
 
 let rangedAttacks 
     (abilities:Abilities)
-    (proficiency:Weapon.Proficiency, level:int) 
+    (proficiency:Weapon.Proficiency) 
+    (level:int) 
     (weapon:Weapon) =
 
         let ability = 
@@ -349,41 +351,35 @@ let rangedAttacks
             match weapon.Proficiency, proficiency with
             | Weapon.Martial, Weapon.Simple -> 0
             | _ -> proficiencyBonus level
+        let attackGrip = 
+            match weapon.Grip with
+            | Weapon.SingleHanded(_) -> SingleHanded
+            | Weapon.TwoHanded -> TwoHanded
 
         match weapon.Usage with
         | Weapon.Thrown(_,info)
         | Weapon.Ranged(info) -> 
             [
-                match weapon.Grip with
-                | Weapon.SingleHanded(_) ->
-                    yield { 
-                        Weapon = weapon.Name
-                        Grip = SingleHanded
-                        HitBonus = ability + proficiency
-                        Damage = weapon.Damage
-                        DamageBonus = ability
-                        DamageType = weapon.DamageType
-                        }
-                | Weapon.TwoHanded ->
-                    yield { 
-                        Weapon = weapon.Name
-                        Grip = TwoHanded
-                        HitBonus = ability + proficiency
-                        Damage = weapon.Damage
-                        DamageBonus = ability
-                        DamageType = weapon.DamageType
-                        }
+                { 
+                    Weapon = weapon.Name
+                    Grip = attackGrip
+                    HitBonus = ability + proficiency
+                    Damage = weapon.Damage
+                    DamageBonus = ability
+                    DamageType = weapon.DamageType
+                }
             ]
             |> List.map (fun attack -> Ranged(info), attack)
         | _ -> []
 
 let attacks 
     (abilities:Abilities)
-    (proficiency:Weapon.Proficiency, level:int) 
+    (proficiency:Weapon.Proficiency) 
+    (level:int) 
     (weapon:Weapon) =
         [
-            yield! meleeAttacks abilities (proficiency,level) weapon
-            yield! rangedAttacks abilities (proficiency,level) weapon
+            yield! meleeAttacks abilities proficiency level weapon
+            yield! rangedAttacks abilities proficiency level weapon
         ]
 
 let hitPointsDice (size:Size) =
@@ -415,6 +411,6 @@ type Monster = {
         armorClass monster.Protection (modifier monster.Abilities DEX)
     static member Attacks (monster:Monster) =
         let attacks = 
-            attacks monster.Abilities (monster.Proficiency, monster.HitDice) 
+            attacks monster.Abilities monster.Proficiency monster.HitDice
         monster.Equipment
         |> List.collect attacks

@@ -1,11 +1,8 @@
 # TODO / ISSUES
 
-- Finesse weapons
-- Two-Handed weapons
-- Two-Weapons fighting
+- Weapons/attacks that are "natural", ex Claw
+- Weapon proficiency bonus and Hit Dice
 - Proficiency, Light/Heavy weapons
-- Thrown weapons
-- Versatile weapons 
 - Multi Attacks
 - Representing Advantage, Disadvantage Roll
 - Figure out nicer template modification when armor changes
