@@ -4,13 +4,14 @@ Explore modeling & simulating actions
 
 (*
 TODO
+- Move can be extended with Dash action
 - Move: a creature can move if remaining movement allows it
 - Move: a creature can move if Terrain allows it
-- Move can be extended with Dash action
 - Cost of movement depends on Terrain
 - How to handle no creature in Initiative?
 - Initialization: prevent creatures in same position
 - Reset available/used movement when turn finishes
+? Separate State elements that never change to limit copying
 ? How should impossible commands be handled
 ? Should creature state switch between Inactive | Active (data)
 ? Can I propose only possible Commands for a Creature
@@ -33,6 +34,12 @@ type Direction =
     | South
     | East
 
+type Terrain = 
+    | Difficult
+    | Blocked
+
+type Map = Map<Position,Terrain>
+    
 let move (pos:Position) (dir:Direction) =
     match dir with 
     | North -> { pos with North = pos.North + 1 }
@@ -67,9 +74,10 @@ type State = {
     Initiative: CreatureID list
     Creatures: Map<CreatureID, Creature.State>
     CreatureStats: Map<CreatureID, Creature.Stats>
+    Map: Map
     } 
 
-let initialize (creatures: (CreatureID * Creature.Info) list) = 
+let initialize (map: Map) (creatures: (CreatureID * Creature.Info) list) = 
     let initiative = creatures |> List.map fst
     let stats = 
         creatures 
@@ -91,6 +99,7 @@ let initialize (creatures: (CreatureID * Creature.Info) list) =
         CreatureUp = initiative |> List.head
         Creatures = states
         CreatureStats = stats
+        Map = map
     }
 
 let handle state (id,cmd) =    
@@ -101,7 +110,14 @@ let handle state (id,cmd) =
         | Move(direction) -> 
             let currentState = state.Creatures.[id]
             let nextPos = move currentState.Position direction
-            let cost = 5 // TODO use Terrain information later
+            let terrain = state.Map |> Map.tryFind nextPos
+            let cost = 
+                match terrain with
+                | None -> 5 
+                | Some(t) ->
+                    match t with 
+                    | Difficult -> 10
+                    | Blocked -> failwith "Impossible move: destination is Blocked"                    
             let stats = state.CreatureStats.[id]
             
             // TODO incorporate Dash 
@@ -171,8 +187,17 @@ let c2Info: Creature.Info = {
         }
     }
 
+let map = 
+    [
+        { North = 1; West = 0 }, Difficult
+        { North = 0; West = 1 }, Blocked
+    ]
+    |> Map.ofSeq
+
 let initialState = 
-    initialize [ 
+    initialize 
+        map
+        [ 
         c1, c1Info 
         c2, c2Info 
         ]
@@ -188,4 +213,10 @@ let state8 = handle state7 (c2, Move South)
 let state9 = handle state8 (c2, Move South)
 let state10 = handle state9 (c2, Move South)
 let state11 = handle state10 (c2, Move South)
-let state12 = handle state11 (c2, Move South)
+
+// fails: exceeded movement
+// let state12 = handle state11 (c2, Move South)
+
+// test difficult, blocked terrain
+let difficultTerrain = handle initialState (c1, Move North)
+let blockedTerrain = handle initialState (c1, Move West)
