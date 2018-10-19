@@ -97,8 +97,19 @@ let handle state (id,cmd) =
     | true ->
         match cmd with
         | Move(direction) -> 
-            let currentPos = state.Creatures.[state.CreatureUp]
-            failwith "Not implemented"
+            let currentState = state.Creatures.[state.CreatureUp]
+            let nextPos = move currentState.Position direction
+            let cost = 5 // TODO use Terrain information later
+            let nextState = { 
+                currentState with 
+                    Position = nextPos
+                    RemainingMovement = currentState.RemainingMovement - cost
+                }
+            { state with
+                Creatures = 
+                    state.Creatures 
+                    |> Map.add id nextState
+            }
         | Done ->
             match state.Initiative with
             | [] -> 
