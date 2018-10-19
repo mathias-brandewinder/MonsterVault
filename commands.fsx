@@ -5,9 +5,6 @@ Explore modeling & simulating actions
 (*
 TODO
 - Move can be extended with Dash action
-- Move: a creature can move if remaining movement allows it
-- Move: a creature can move if Terrain allows it
-- Cost of movement depends on Terrain
 - How to handle no creature in Initiative?
 - Initialization: prevent creatures in same position
 - Reset available/used movement when turn finishes
@@ -18,9 +15,15 @@ TODO
 x Creature can always finish turn (Done)
 x When Done, next creature in Initiative is Up
 x When Initiative List is finished, Next Turn starts
+x Move: a creature can move if Terrain allows it
+x Cost of movement depends on Terrain
+x Move: a creature can move if remaining movement allows it
 *)
 
 type CreatureID = | CreatureID of int
+
+type Action = 
+    | Dash
 
 type Position = { 
     North: int
@@ -57,6 +60,7 @@ module Creature =
     type State = {
         Position: Position
         MovementUsed: int
+        Action: Action option
         }
 
     type Info = {
@@ -67,6 +71,7 @@ module Creature =
 type Command = 
     | Done
     | Move of Direction
+    | Dash
 
 type State = {
     Turn: int
@@ -90,6 +95,7 @@ let initialize (map: Map) (creatures: (CreatureID * Creature.Info) list) =
             {   
                 Creature.State.Position = info.Position
                 Creature.State.MovementUsed = 0
+                Creature.State.Action = None
             }
             )
         |> Map.ofSeq
@@ -134,6 +140,17 @@ let handle state (id,cmd) =
                     state.Creatures 
                     |> Map.add id nextState
             }
+        | Dash ->
+            let currentState = state.Creatures.[id]
+            match currentState.Action with
+            | None ->          
+                let nextState = { currentState with Action = Some Action.Dash }
+                { state with 
+                    Creatures = 
+                        state.Creatures 
+                        |> Map add id nextState 
+                }
+            | Some(_) -> failwith "Cannot take 2nd Action"
         | Done ->
             match state.Initiative with
             | [] -> 
@@ -220,3 +237,4 @@ let state11 = handle state10 (c2, Move South)
 // test difficult, blocked terrain
 let difficultTerrain = handle initialState (c1, Move North)
 let blockedTerrain = handle initialState (c1, Move West)
+let dash = handle initialState (c1, Dash)
