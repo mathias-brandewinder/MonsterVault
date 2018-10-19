@@ -10,6 +10,7 @@ TODO
 - Cost of movement depends on Terrain
 - How to handle no creature in Initiative?
 - Initialization: prevent creatures in same position
+- Reset available/used movement when turn finishes
 ? Should creature state switch between Inactive | Active (data)
 ? Can I propose only possible Commands for a Creature
 x Creature can always finish turn (Done)
@@ -47,7 +48,7 @@ module Creature =
 
     type State = {
         Position: Position
-        RemainingMovement: int
+        MovementUsed: int
         }
 
     type Info = {
@@ -79,7 +80,7 @@ let initialize (creatures: (CreatureID * Creature.Info) list) =
             id,
             {   
                 Creature.State.Position = info.Position
-                Creature.State.RemainingMovement = 0
+                Creature.State.MovementUsed = 0
             }
             )
         |> Map.ofSeq
@@ -103,7 +104,7 @@ let handle state (id,cmd) =
             let nextState = { 
                 currentState with 
                     Position = nextPos
-                    RemainingMovement = currentState.RemainingMovement - cost
+                    MovementUsed = currentState.MovementUsed + cost
                 }
             { state with
                 Creatures = 
@@ -126,8 +127,16 @@ let handle state (id,cmd) =
                         if nextIndex = (initiative |> List.length)
                         then 0, state.Turn + 1
                         else nextIndex, state.Turn
+                
+                let resetCurrentCreatureState = 
+                    let current = state.Creatures.[id]
+                    { current with MovementUsed = 0 }
                 let nextUp = initiative |> List.item nextIndex
+
                 { state with 
+                    Creatures = 
+                        state.Creatures 
+                        |> Map.add id resetCurrentCreatureState
                     Turn = nextTurn
                     CreatureUp = nextUp
                 }
@@ -164,3 +173,6 @@ let initialState =
 let state1 = handle initialState (c1,Done)
 let state2 = handle state1 (c2,Done)
 let state3 = handle state2 (c1, Move North)
+let state4 = handle state3 (c1, Move North)
+let state5 = handle state4 (c1, Done)
+let state6 = handle state5 (c2, Move South)
