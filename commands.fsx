@@ -4,7 +4,14 @@ Explore modeling & simulating actions
 
 (*
 TODO
+- Move: a creature can move if remaining movement allows it
+- Move: a creature can move if Terrain allows it
+- Move can be extended with Dash action
+- Cost of movement depends on Terrain
 - How to handle no creature in Initiative?
+- Initialization: prevent creatures in same position
+? Should creature state switch between Inactive | Active (data)
+? Can I propose only possible Commands for a Creature
 x Creature can always finish turn (Done)
 x When Done, next creature in Initiative is Up
 x When Initiative List is finished, Next Turn starts
@@ -12,20 +19,76 @@ x When Initiative List is finished, Next Turn starts
 
 type CreatureID = | CreatureID of int
 
+type Position = { 
+    North: int
+    West: int
+    }
+
+// restrict to 4 for now
+type Direction = 
+    | North
+    | West
+    | South
+    | East
+
+let move (pos:Position) (dir:Direction) =
+    match dir with 
+    | North -> { pos with North = pos.North + 1 }
+    | West -> { pos with West = pos.West + 1 }
+    | South -> { pos with North = pos.North - 1 }
+    | East -> { pos with West = pos.West - 1 }
+
+[<RequireQualifiedAccess>]
+module Creature = 
+
+    type Stats = {
+        Movement: int
+        }
+
+    type State = {
+        Position: Position
+        RemainingMovement: int
+        }
+
+    type Info = {
+        Stats: Stats
+        Position: Position
+        }
+
 type Command = 
     | Done
+    | Move of Direction
 
 type State = {
     Turn: int
     CreatureUp: CreatureID
     Initiative: CreatureID list
+    Creatures: Map<CreatureID, Creature.State>
+    CreatureStats: Map<CreatureID, Creature.Stats>
     } 
 
-let initialize (initiative: CreatureID list) = 
+let initialize (creatures: (CreatureID * Creature.Info) list) = 
+    let initiative = creatures |> List.map fst
+    let stats = 
+        creatures 
+        |> Seq.map (fun (id, info) -> id, info.Stats)
+        |> Map.ofSeq
+    let states = 
+        creatures
+        |> Seq.map (fun (id, info) -> 
+            id,
+            {   
+                Creature.State.Position = info.Position
+                Creature.State.RemainingMovement = 0
+            }
+            )
+        |> Map.ofSeq
     {
         Turn = 1
         Initiative = initiative
         CreatureUp = initiative |> List.head
+        Creatures = states
+        CreatureStats = stats
     }
 
 let handle state (id,cmd) =    
@@ -33,6 +96,9 @@ let handle state (id,cmd) =
     | false -> failwith "invalid command"
     | true ->
         match cmd with
+        | Move(direction) -> 
+            let currentPos = state.Creatures.[state.CreatureUp]
+            failwith "Not implemented"
         | Done ->
             match state.Initiative with
             | [] -> 
@@ -57,8 +123,33 @@ let handle state (id,cmd) =
 
 // Trying things out
 let c1 = CreatureID 1
+let c1Info: Creature.Info = {
+    Stats = { 
+        Movement = 25 
+        }
+    Position = {
+        North = 0
+        West = 0
+        }
+    }
+
 let c2 = CreatureID 2
-let initialState = initialize [ c1; c2 ]
+let c2Info: Creature.Info = {
+    Stats = { 
+        Movement = 30 
+        }
+    Position = {
+        North = 10
+        West = 10
+        }
+    }
+
+let initialState = 
+    initialize [ 
+        c1, c1Info 
+        c2, c2Info 
+        ]
 
 let state1 = handle initialState (c1,Done)
 let state2 = handle state1 (c2,Done)
+let state3 = handle state2 (c1, Move North)
