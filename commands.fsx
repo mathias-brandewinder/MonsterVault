@@ -4,14 +4,17 @@ Explore modeling & simulating actions
 
 (*
 TODO
-- Move can be extended with Dash action
-- How to handle no creature in Initiative?
+- Move can be reduced by conditions, ex Prone
 - Initialization: prevent creatures in same position
 - Reset available/used movement when turn finishes
+- Dash can also be taken as Bonus Action, in some cases
+? How to represent climbing, changes of level 
+? How to handle no creature in Initiative?
 ? Separate State elements that never change to limit copying
-? How should impossible commands be handled
+? How should impossible commands be handled 
 ? Should creature state switch between Inactive | Active (data)
 ? Can I propose only possible Commands for a Creature
+- Move can be extended with Dash action
 x Creature can always finish turn (Done)
 x When Done, next creature in Initiative is Up
 x When Initiative List is finished, Next Turn starts
@@ -126,8 +129,13 @@ let handle state (id,cmd) =
                     | Blocked -> failwith "Impossible move: destination is Blocked"                    
             let stats = state.CreatureStats.[id]
             
-            // TODO incorporate Dash 
-            if currentState.MovementUsed + cost > stats.Movement
+            let maxMovement =
+                stats.Movement
+                +
+                match currentState.Action with
+                | Some(Action.Dash) -> stats.Movement
+                | _ -> 0
+            if currentState.MovementUsed + cost > maxMovement
             then failwith "Impossible move: creature exceeded maximum allowed movement"
 
             let nextState = { 
@@ -148,7 +156,7 @@ let handle state (id,cmd) =
                 { state with 
                     Creatures = 
                         state.Creatures 
-                        |> Map add id nextState 
+                        |> Map.add id nextState 
                 }
             | Some(_) -> failwith "Cannot take 2nd Action"
         | Done ->
@@ -185,7 +193,7 @@ let handle state (id,cmd) =
 let c1 = CreatureID 1
 let c1Info: Creature.Info = {
     Stats = { 
-        Movement = 25 
+        Movement = 15 
         }
     Position = {
         North = 0
@@ -196,7 +204,7 @@ let c1Info: Creature.Info = {
 let c2 = CreatureID 2
 let c2Info: Creature.Info = {
     Stats = { 
-        Movement = 30 
+        Movement = 10 
         }
     Position = {
         North = 10
@@ -226,7 +234,8 @@ let state4 = handle state3 (c1, Move North)
 let state5 = handle state4 (c1, Done)
 let state6 = handle state5 (c2, Move South)
 let state7 = handle state6 (c2, Move South)
-let state8 = handle state7 (c2, Move South)
+
+let state8 = handle state7 (c2, Dash)
 let state9 = handle state8 (c2, Move South)
 let state10 = handle state9 (c2, Move South)
 let state11 = handle state10 (c2, Move South)
