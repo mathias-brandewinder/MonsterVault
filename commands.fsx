@@ -92,7 +92,43 @@ type State = {
     Map: Map
     } 
 
+module Check =
+
+    let inaccessiblePositions (map: Map) (creatures: (CreatureID * Creature.Info) list) =
+        let inaccessibles = 
+            map 
+            |> Map.filter (fun pos terrain -> terrain = Blocked)
+            |> Seq.map (fun kv -> kv.Key)
+            |> set
+        let errors = 
+            creatures
+            |> Seq.filter (fun (_, info) -> 
+                inaccessibles |> Set.contains info.Position
+                )
+            |> Seq.map (fun (id, _) -> id)
+        errors
+
+    let overlappingCreatures (creatures: (CreatureID * Creature.Info) list) =
+
+        let rec dupes errors (remaining: (CreatureID * Creature.Info) list) = 
+            match remaining with
+            | [] -> errors
+            | (id, info) :: tl -> 
+                tl 
+                |> List.filter (fun (_, xInfo) -> 
+                    info.Position = xInfo.Position
+                    )
+                |> List.map (fun (xId, _) -> (id, xId))
+                |> List.append errors
+                |> fun errors -> dupes errors tl
+
+        dupes [] creatures
+
 let initialize (map: Map) (creatures: (CreatureID * Creature.Info) list) = 
+    
+    let inaccessibles = Check.inaccessiblePositions map creatures
+    let overlappings = Check.overlappingCreatures creatures
+    
     let initiative = creatures |> List.map fst
     let stats = 
         creatures 
@@ -281,4 +317,4 @@ let state14 = handle state13 (c2, Move South)
 // test difficult, blocked terrain
 let difficultTerrain = handle initialState (c1, Move North)
 let blockedTerrain = handle initialState (c1, Move West)
-let dash = handle initialState (c1, Dash)
+let dash = handle initialState (c1, Action Dash)
