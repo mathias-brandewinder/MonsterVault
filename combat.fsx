@@ -44,41 +44,99 @@ let move (dir: Direction) (pos: Position) =
             West = pos.West - 1
         }
 
-{ North = 0; West = 0 }
-|> move N
-|> move NW
-|> move W
-
 type CreatureID = | CreatureID of int
 
+[<RequireQualifiedAccess>]
+module Creature = 
+
+    type Statistics = {
+        Movement: int
+        }
+
+    type State = {
+        MovementLeft: int
+        Position: Position
+        }
+    
+    let initialize (stats: Statistics, pos: Position) =
+        {
+            MovementLeft = stats.Movement
+            Position = pos
+        }
+
 type World = {
-    Creatures: Map<CreatureID, Position>
+    Initiative: CreatureID list
+    Active: CreatureID
+    Creatures: Map<CreatureID, Creature.State>
     }
+    with
+    static member Initialize(creatures: (CreatureID * Creature.Statistics * Position) list) =
+        let initiative = 
+            creatures 
+            |> List.map (fun (creatureID, _, _) -> creatureID)
+        {
+            Initiative = initiative
+            Active = initiative |> List.head
+            Creatures = 
+                creatures 
+                |> List.map (fun (creatureId, stats, pos) -> 
+                    creatureId,
+                    Creature.initialize (stats, pos)
+                    ) 
+                |> Map.ofList 
+        }
 
 type Command = 
     | Move of Direction
+    | Done
 
 let update (creatureID: CreatureID, cmd: Command) (world: World) = 
     
-    let currentPosition = world.Creatures.[creatureID]
+    if world.Active <> creatureID
+    then failwith (sprintf "Error: it is not %A's turn." creatureID)
+    else
+        let currentState = world.Creatures.[creatureID]
 
-    match cmd with
-    | Move(direction) ->
-        let updatedPosition = currentPosition |> move direction         
-        { world with
-            Creatures = 
-                world.Creatures 
-                |> Map.add creatureID updatedPosition
-        }
+        match cmd with
+        | Move(direction) ->
+            let updatedState = 
+                { currentState with 
+                    Position = currentState.Position |> move direction 
+                    MovementLeft = currentState.MovementLeft - 5
+                }
+            { world with
+                Creatures = 
+                    world.Creatures 
+                    |> Map.add creatureID updatedState
+            }
+        | Done ->
+            let activeIndex = 
+                world.Initiative 
+                |> List.findIndex (fun id -> id = creatureID)
+            let nextUp = (activeIndex + 1) % world.Initiative.Length
+            { world with Active = world.Initiative.Item nextUp }
 
-let world = {
-    Creatures = [
-        CreatureID 1, { North = 0; West = 0 }
-        CreatureID 2, { North = 5; West = 5 }
-        ]
-        |> Map.ofList
-    }
+let creature1 = 
+    CreatureID 1, 
+    { Creature.Movement = 30 },
+    { North = 0; West = 0 } 
+    
+
+let creature2 = 
+    CreatureID 2, 
+    { Creature.Movement = 20 },
+    { North = 5; West = 5 } 
+
+let world = 
+    [
+        creature1
+        creature2
+    ]
+    |> World.Initialize 
+
 
 world 
 |> update (CreatureID 1, Move N)
+|> update (CreatureID 1, Move SE) 
+|> update (CreatureID 1, Done) 
 |> update (CreatureID 2, Move SE) 
