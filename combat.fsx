@@ -2,6 +2,8 @@
 Work in progress: modeling combat.
 *)
 
+[<Measure>]type ft
+
 type Direction = 
     | N
     | NW
@@ -44,17 +46,19 @@ let move (dir: Direction) (pos: Position) =
             West = pos.West - 1
         }
 
+let cellSize = 5<ft>
+
 type CreatureID = | CreatureID of int
 
 [<RequireQualifiedAccess>]
 module Creature = 
 
     type Statistics = {
-        Movement: int
+        Movement: int<ft>
         }
 
     type State = {
-        MovementLeft: int
+        MovementLeft: int<ft>
         Position: Position
         }
     
@@ -99,16 +103,22 @@ let update (creatureID: CreatureID, cmd: Command) (world: World) =
 
         match cmd with
         | Move(direction) ->
-            let updatedState = 
-                { currentState with 
-                    Position = currentState.Position |> move direction 
-                    MovementLeft = currentState.MovementLeft - 5
+            let movementLeft = currentState.MovementLeft
+            if movementLeft < cellSize
+            then
+                sprintf "Error: %A does not have enough movement left" creatureID
+                |> failwith 
+            else
+                let updatedState = 
+                    { currentState with 
+                        Position = currentState.Position |> move direction 
+                        MovementLeft = currentState.MovementLeft - cellSize
+                    }
+                { world with
+                    Creatures = 
+                        world.Creatures 
+                        |> Map.add creatureID updatedState
                 }
-            { world with
-                Creatures = 
-                    world.Creatures 
-                    |> Map.add creatureID updatedState
-            }
         | Done ->
             let activeIndex = 
                 world.Initiative 
@@ -118,13 +128,13 @@ let update (creatureID: CreatureID, cmd: Command) (world: World) =
 
 let creature1 = 
     CreatureID 1, 
-    { Creature.Movement = 30 },
+    { Creature.Movement = 30<ft> },
     { North = 0; West = 0 } 
     
 
 let creature2 = 
     CreatureID 2, 
-    { Creature.Movement = 20 },
+    { Creature.Movement = 20<ft> },
     { North = 5; West = 5 } 
 
 let world = 
@@ -134,9 +144,13 @@ let world =
     ]
     |> World.Initialize 
 
-
 world 
+|> update (CreatureID 1, Move N)
+|> update (CreatureID 1, Move N)
+|> update (CreatureID 1, Move N)
 |> update (CreatureID 1, Move N)
 |> update (CreatureID 1, Move SE) 
 |> update (CreatureID 1, Done) 
 |> update (CreatureID 2, Move SE) 
+|> update (CreatureID 2, Done)
+|> update (CreatureID 1, Move N) 
