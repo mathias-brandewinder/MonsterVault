@@ -1,5 +1,10 @@
+open System.Drawing.Drawing2D
 (*
 Work in progress: modeling combat.
+
+Notes / TODOs
+- out-of-turn activities, ex: opportunity attack
+- crossing creature space and size 
 *)
 
 [<Measure>]type ft
@@ -48,6 +53,9 @@ let move (dir: Direction) (pos: Position) =
 
 let cellSize = 5<ft>
 
+type Action = 
+    | Dash
+
 type CreatureID = | CreatureID of int
 
 [<RequireQualifiedAccess>]
@@ -60,12 +68,14 @@ module Creature =
     type State = {
         MovementLeft: int<ft>
         Position: Position
+        ActionTaken: Action option
         }
     
     let initialize (stats: Statistics, pos: Position) =
         {
             MovementLeft = stats.Movement
             Position = pos
+            ActionTaken = None
         }
 
 type World = {
@@ -100,6 +110,7 @@ type World = {
 
 type Command = 
     | Move of Direction
+    | Action of Action
     | Done
 
 let update (creatureID: CreatureID, cmd: Command) (world: World) = 
@@ -127,11 +138,31 @@ let update (creatureID: CreatureID, cmd: Command) (world: World) =
                         world.Creatures 
                         |> Map.add creatureID updatedState
                 }
+        | Action(action) ->
+            match currentState.ActionTaken with
+            | Some(_) -> 
+                "Error: %A has already taken its action"
+                |> failwith
+            | None ->
+                match action with
+                | Dash ->
+                    let creatureStats = world.Statistics.[creatureID]
+                    let creatureState = 
+                        { currentState with 
+                            MovementLeft = currentState.MovementLeft + creatureStats.Movement
+                            ActionTaken = Some Dash
+                        }
+                    { world with
+                        Creatures = 
+                            world.Creatures 
+                            |> Map.add creatureID creatureState
+                    }
         | Done ->
             let creatureStats = world.Statistics.[creatureID]
             let creatureState = 
                 { currentState with 
                     MovementLeft = creatureStats.Movement 
+                    ActionTaken = None
                 }
             let activeIndex = 
                 world.Initiative 
@@ -150,7 +181,6 @@ let creature1 =
     { Creature.Movement = 30<ft> },
     { North = 0; West = 0 } 
     
-
 let creature2 = 
     CreatureID 2, 
     { Creature.Movement = 20<ft> },
@@ -173,4 +203,10 @@ world
 |> update (CreatureID 2, Move SE) 
 |> update (CreatureID 2, Done)
 |> update (CreatureID 1, Move N) 
+|> update (CreatureID 1, Move N) 
+|> update (CreatureID 1, Move N) 
+|> update (CreatureID 1, Move N) 
+|> update (CreatureID 1, Move N) 
+|> update (CreatureID 1, Move N) 
+|> update (CreatureID 1, Action Dash) 
 |> update (CreatureID 1, Move N) 
