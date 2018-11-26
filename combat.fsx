@@ -72,6 +72,7 @@ type World = {
     Initiative: CreatureID list
     Active: CreatureID
     Creatures: Map<CreatureID, Creature.State>
+    Statistics: Map<CreatureID, Creature.Statistics>
     }
     with
     static member Initialize(creatures: (CreatureID * Creature.Statistics * Position) list) =
@@ -86,6 +87,13 @@ type World = {
                 |> List.map (fun (creatureId, stats, pos) -> 
                     creatureId,
                     Creature.initialize (stats, pos)
+                    ) 
+                |> Map.ofList 
+            Statistics = 
+                creatures 
+                |> List.map (fun (creatureId, stats, _) -> 
+                    creatureId,
+                    stats
                     ) 
                 |> Map.ofList 
         }
@@ -120,11 +128,22 @@ let update (creatureID: CreatureID, cmd: Command) (world: World) =
                         |> Map.add creatureID updatedState
                 }
         | Done ->
+            let creatureStats = world.Statistics.[creatureID]
+            let creatureState = 
+                { currentState with 
+                    MovementLeft = creatureStats.Movement 
+                }
             let activeIndex = 
                 world.Initiative 
                 |> List.findIndex (fun id -> id = creatureID)
             let nextUp = (activeIndex + 1) % world.Initiative.Length
-            { world with Active = world.Initiative.Item nextUp }
+            let nextActive = world.Initiative.Item nextUp
+            { world with 
+                Active = nextActive
+                Creatures = 
+                    world.Creatures 
+                    |> Map.add creatureID creatureState     
+            }
 
 let creature1 = 
     CreatureID 1, 
@@ -153,4 +172,5 @@ world
 |> update (CreatureID 1, Done) 
 |> update (CreatureID 2, Move SE) 
 |> update (CreatureID 2, Done)
+|> update (CreatureID 1, Move N) 
 |> update (CreatureID 1, Move N) 
