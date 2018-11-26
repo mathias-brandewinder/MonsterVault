@@ -128,16 +128,24 @@ let update (creatureID: CreatureID, cmd: Command) (world: World) =
                 sprintf "Error: %A does not have enough movement left" creatureID
                 |> failwith 
             else
-                let updatedState = 
-                    { currentState with 
-                        Position = currentState.Position |> move direction 
-                        MovementLeft = currentState.MovementLeft - cellSize
+                let destination = 
+                    currentState.Position 
+                    |> move direction
+                if world.Creatures |> Map.exists (fun ID state -> ID <> creatureID && state.Position = destination)
+                then 
+                    sprintf "Error: %A destination is already occupied" creatureID
+                    |> failwith
+                else
+                    let updatedState = 
+                        { currentState with 
+                            Position = destination 
+                            MovementLeft = currentState.MovementLeft - cellSize
+                        }
+                    { world with
+                        Creatures = 
+                            world.Creatures 
+                            |> Map.add creatureID updatedState
                     }
-                { world with
-                    Creatures = 
-                        world.Creatures 
-                        |> Map.add creatureID updatedState
-                }
         | Action(action) ->
             match currentState.ActionTaken with
             | Some(_) -> 
@@ -195,6 +203,7 @@ let world =
 
 world 
 |> update (CreatureID 1, Move N)
+|> update (CreatureID 1, Action Dash) 
 |> update (CreatureID 1, Move N)
 |> update (CreatureID 1, Move N)
 |> update (CreatureID 1, Move N)
