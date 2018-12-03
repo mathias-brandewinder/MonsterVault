@@ -1,4 +1,3 @@
-open System.Drawing.Drawing2D
 (*
 Work in progress: modeling combat.
 
@@ -116,7 +115,9 @@ type Command =
 let update (creatureID: CreatureID, cmd: Command) (world: World) = 
     
     if world.Active <> creatureID
-    then failwith (sprintf "Error: it is not %A's turn." creatureID)
+    then 
+        sprintf "Error: it is not %A's turn." creatureID
+        |> failwith    
     else
         let currentState = world.Creatures.[creatureID]
 
@@ -149,7 +150,7 @@ let update (creatureID: CreatureID, cmd: Command) (world: World) =
         | Action(action) ->
             match currentState.ActionTaken with
             | Some(_) -> 
-                "Error: %A has already taken its action"
+                sprintf "Error: %A has already taken its action" creatureID
                 |> failwith
             | None ->
                 match action with
