@@ -112,60 +112,125 @@ type Command =
     | Action of Action
     | Done
 
+module Rules = 
+
+    type Rule = 
+        abstract member Validate: 
+            World -> CreatureID * Command -> Result<CreatureID * Command, string>
+
+    let errorMessage (creatureID, command) message =
+        sprintf "%A / %A failed: %s" command creatureID message
+
+    let ``A creature must be active to act`` =
+        { new Rule with
+            member this.Validate world (creatureID, command) =
+                if world.Active <> creatureID
+                then 
+                    "it is not the creature's turn"
+                    |> errorMessage (creatureID, command) 
+                    |> Error
+                else Ok (creatureID, command)
+        }
+
+    let ``A creature cannot move if it has not enough movement left`` =
+        { new Rule with
+            member this.Validate world (creatureID, command) =
+                let currentState = world.Creatures.[creatureID]
+                match command with
+                | Move(_) ->
+                    let movementLeft = currentState.MovementLeft
+                    if movementLeft < cellSize
+                    then
+                        "creature does not have enough movement left"
+                        |> errorMessage (creatureID, command) 
+                        |> Error
+                    else Ok (creatureID, command)
+                | _ -> Ok (creatureID, command)
+        }
+
+    let ``A creature cannot move to a space occupied by another creature`` =
+        { new Rule with
+            member this.Validate world (creatureID, command) =
+                let currentState = world.Creatures.[creatureID]
+                match command with
+                | Move(direction) ->
+                    let destination = 
+                        currentState.Position 
+                        |> move direction
+                    if world.Creatures |> Map.exists (fun ID state -> ID <> creatureID && state.Position = destination)
+                    then
+                        "cannot move into the space of another creature"
+                        |> errorMessage (creatureID, command) 
+                        |> Error
+                    else Ok (creatureID, command)
+                | _ -> Ok (creatureID, command)
+        }
+
+    let ``A creature can take at most one action per turn`` =
+        { new Rule with
+            member this.Validate world (creatureID, command) =
+                let currentState = world.Creatures.[creatureID]
+                match command with
+                | Action(_) ->
+                    match currentState.ActionTaken with
+                    | Some(_) -> 
+                        "creature has already taken one action this turn"
+                        |> errorMessage (creatureID, command) 
+                        |> Error
+                    | None -> Ok (creatureID, command)
+                | _ -> Ok (creatureID, command)
+        }
+
+    let rules = [
+        ``A creature must be active to act``
+        ``A creature cannot move if it has not enough movement left``
+        ``A creature cannot move to a space occupied by another creature``
+        ``A creature can take at most one action per turn``
+        ]
+
+    let validate world (creatureID, command) =
+        (Ok (creatureID, command), rules)
+        ||> Seq.fold (fun state rule -> 
+            state
+            |> Result.bind (rule.Validate world)
+            )
+
 let update (creatureID: CreatureID, cmd: Command) (world: World) = 
     
-    if world.Active <> creatureID
-    then 
-        sprintf "Error: it is not %A's turn." creatureID
-        |> failwith    
-    else
+    match Rules.validate world (creatureID, cmd) with
+    | Error(message) -> failwith message
+    | Ok(creatureID, cmd) ->
         let currentState = world.Creatures.[creatureID]
-
         match cmd with
         | Move(direction) ->
             let movementLeft = currentState.MovementLeft
-            if movementLeft < cellSize
-            then
-                sprintf "Error: %A does not have enough movement left" creatureID
-                |> failwith 
-            else
-                let destination = 
-                    currentState.Position 
-                    |> move direction
-                if world.Creatures |> Map.exists (fun ID state -> ID <> creatureID && state.Position = destination)
-                then 
-                    sprintf "Error: %A destination is already occupied" creatureID
-                    |> failwith
-                else
-                    let updatedState = 
-                        { currentState with 
-                            Position = destination 
-                            MovementLeft = currentState.MovementLeft - cellSize
-                        }
-                    { world with
-                        Creatures = 
-                            world.Creatures 
-                            |> Map.add creatureID updatedState
-                    }
+            let destination = 
+                currentState.Position 
+                |> move direction
+            let updatedState = 
+                { currentState with 
+                    Position = destination 
+                    MovementLeft = currentState.MovementLeft - cellSize
+                }
+            { world with
+                Creatures = 
+                    world.Creatures 
+                    |> Map.add creatureID updatedState
+            }
         | Action(action) ->
-            match currentState.ActionTaken with
-            | Some(_) -> 
-                sprintf "Error: %A has already taken its action" creatureID
-                |> failwith
-            | None ->
-                match action with
-                | Dash ->
-                    let creatureStats = world.Statistics.[creatureID]
-                    let creatureState = 
-                        { currentState with 
-                            MovementLeft = currentState.MovementLeft + creatureStats.Movement
-                            ActionTaken = Some Dash
-                        }
-                    { world with
-                        Creatures = 
-                            world.Creatures 
-                            |> Map.add creatureID creatureState
+            match action with
+            | Dash ->
+                let creatureStats = world.Statistics.[creatureID]
+                let creatureState = 
+                    { currentState with 
+                        MovementLeft = currentState.MovementLeft + creatureStats.Movement
+                        ActionTaken = Some Dash
                     }
+                { world with
+                    Creatures = 
+                        world.Creatures 
+                        |> Map.add creatureID creatureState
+                }
         | Done ->
             let creatureStats = world.Statistics.[creatureID]
             let creatureState = 
@@ -204,10 +269,12 @@ let world =
 
 world 
 |> update (CreatureID 1, Move N)
-|> update (CreatureID 1, Action Dash) 
+// |> update (CreatureID 1, Action Dash) 
 |> update (CreatureID 1, Move N)
 |> update (CreatureID 1, Move N)
 |> update (CreatureID 1, Move N)
+|> update (CreatureID 1, Move SE) 
+|> update (CreatureID 1, Move SE) 
 |> update (CreatureID 1, Move SE) 
 |> update (CreatureID 1, Done) 
 |> update (CreatureID 2, Move SE) 
