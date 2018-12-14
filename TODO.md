@@ -1,5 +1,10 @@
 # TODO / ISSUES
 
+- out-of-turn activities, ex: opportunity attack
+- crossing creature space and size 
+
+## Backlog
+
 - Weapons/attacks that are "natural", ex Claw
 - Weapon proficiency bonus and Hit Dice
 - Proficiency, Light/Heavy weapons

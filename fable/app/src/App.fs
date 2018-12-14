@@ -1,43 +1,60 @@
-module App
+namespace MonsterVault
 
-(**
- The famous Increment/Decrement ported from Elm.
- You can find more info about Emish architecture and samples at https://elmish.github.io/
-*)
+module App =
 
-open Elmish
-open Elmish.React
-open Fable.Helpers.React
-open Fable.Helpers.React.Props
+    open Elmish
+    open Elmish.React
+    open Fable.Helpers.React
+    open Fable.Helpers.React.Props
+    open MonsterVault.Domain
 
-// MODEL
+    // MODEL
 
-type Model = int
+    type Model = World
 
-type Msg =
-| Increment
-| Decrement
+    type Msg = CreatureID * Command
 
-let init() : Model = 0
+    let init () = world
 
-// UPDATE
+    // UPDATE
 
-let update (msg:Msg) (model:Model) =
-    match msg with
-    | Increment -> model + 1
-    | Decrement -> model - 1
+    let update (msg:Msg) (model:Model) =
+        apply msg model
 
-// VIEW (rendered with React)
+    // VIEW (rendered with React)
 
-let view (model:Model) dispatch =
+    let view (model:Model) dispatch =
 
-  div []
-      [ button [ OnClick (fun _ -> dispatch Increment) ] [ str "+" ]
-        div [] [ str (string model) ]
-        button [ OnClick (fun _ -> dispatch Decrement) ] [ str "-" ] ]
+        let sendCommand cmd =
+            (model.Active, cmd)
+            |> dispatch
 
-// App
-Program.mkSimple init update view
-|> Program.withReact "elmish-app"
-|> Program.withConsoleTrace
-|> Program.run
+        div []
+            [ 
+                div [] [ str (string model) ]
+
+                div [] [ str "Movement" ]
+
+                button [ OnClick (fun _ -> sendCommand (Move N)) ] [ str "N" ]
+                button [ OnClick (fun _ -> sendCommand (Move NW)) ] [ str "NW" ]
+                button [ OnClick (fun _ -> sendCommand (Move W)) ] [ str "W" ]
+                button [ OnClick (fun _ -> sendCommand (Move SW)) ] [ str "SW" ]
+                button [ OnClick (fun _ -> sendCommand (Move S)) ] [ str "S" ]
+                button [ OnClick (fun _ -> sendCommand (Move SE)) ] [ str "SE" ]
+                button [ OnClick (fun _ -> sendCommand (Move E)) ] [ str "E" ]
+                button [ OnClick (fun _ -> sendCommand (Move NE)) ] [ str "NE" ]
+
+                div [] [ str "Actions" ]
+
+                button [ OnClick (fun _ -> sendCommand (Action Dash)) ] [ str "Dash" ]
+
+                div [] [ str "Other" ]
+
+                button [ OnClick (fun _ -> sendCommand (Done)) ] [ str "Done" ]
+            ]
+
+    // App
+    Program.mkSimple init update view
+    |> Program.withReact "elmish-app"
+    |> Program.withConsoleTrace
+    |> Program.run
