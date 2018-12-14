@@ -1,4 +1,5 @@
 namespace MonsterVault
+open Fable.Import.React
 
 module App =
 
@@ -10,28 +11,56 @@ module App =
 
     // MODEL
 
-    type Model = World
+    type Model = {
+        World: World
+        Journal: string list
+        }
 
     type Msg = CreatureID * Command
 
-    let init () = world
+    let init () = {
+        World = world
+        Journal = []
+        }
 
     // UPDATE
 
     let update (msg:Msg) (model:Model) =
-        apply msg model
+        match Rules.validate (model.World) msg with
+        | Error(error) -> 
+            { model with 
+                Journal = 
+                    error :: model.Journal 
+                    |> List.truncate 5
+            }
+        | Ok (creatureID, command) -> 
+            let world = update model.World (creatureID, command)
+            { model with
+                World = world
+                Journal = 
+                    (sprintf "%A: %A" creatureID command) :: model.Journal
+                    |> List.truncate 5
+            }
 
     // VIEW (rendered with React)
 
     let view (model:Model) dispatch =
 
         let sendCommand cmd =
-            (model.Active, cmd)
+            (model.World.Active, cmd)
             |> dispatch
+
+        let journal =
+            div []
+                [
+                    for entry in model.Journal do
+                        yield str entry
+                        yield br []
+                ]
 
         div []
             [ 
-                div [] [ str (string model) ]
+                div [] [ str (string (model.World)) ]
 
                 div [] [ str "Movement" ]
 
@@ -51,6 +80,10 @@ module App =
                 div [] [ str "Other" ]
 
                 button [ OnClick (fun _ -> sendCommand (Done)) ] [ str "Done" ]
+
+                div [] [ str "Journal" ]
+                
+                journal
             ]
 
     // App
