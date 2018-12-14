@@ -195,60 +195,64 @@ module Rules =
             |> Result.bind (rule.Validate world)
             )
 
-let update (creatureID: CreatureID, cmd: Command) (world: World) = 
+let update (world: World) (creatureID: CreatureID, cmd: Command) = 
     
-    match Rules.validate world (creatureID, cmd) with
-    | Error(message) -> failwith message
-    | Ok(creatureID, cmd) ->
-        let currentState = world.Creatures.[creatureID]
-        match cmd with
-        | Move(direction) ->
-            let movementLeft = currentState.MovementLeft
-            let destination = 
-                currentState.Position 
-                |> move direction
-            let updatedState = 
+    let currentState = world.Creatures.[creatureID]
+    match cmd with
+    | Move(direction) ->
+        let destination = 
+            currentState.Position 
+            |> move direction
+        let updatedState = 
+            { currentState with 
+                Position = destination 
+                MovementLeft = currentState.MovementLeft - cellSize
+            }
+        { world with
+            Creatures = 
+                world.Creatures 
+                |> Map.add creatureID updatedState
+        }
+    | Action(action) ->
+        match action with
+        | Dash ->
+            let creatureStats = world.Statistics.[creatureID]
+            let creatureState = 
                 { currentState with 
-                    Position = destination 
-                    MovementLeft = currentState.MovementLeft - cellSize
+                    MovementLeft = currentState.MovementLeft + creatureStats.Movement
+                    ActionTaken = Some Dash
                 }
             { world with
                 Creatures = 
                     world.Creatures 
-                    |> Map.add creatureID updatedState
+                    |> Map.add creatureID creatureState
             }
-        | Action(action) ->
-            match action with
-            | Dash ->
-                let creatureStats = world.Statistics.[creatureID]
-                let creatureState = 
-                    { currentState with 
-                        MovementLeft = currentState.MovementLeft + creatureStats.Movement
-                        ActionTaken = Some Dash
-                    }
-                { world with
-                    Creatures = 
-                        world.Creatures 
-                        |> Map.add creatureID creatureState
-                }
-        | Done ->
-            let creatureStats = world.Statistics.[creatureID]
-            let creatureState = 
-                { currentState with 
-                    MovementLeft = creatureStats.Movement 
-                    ActionTaken = None
-                }
-            let activeIndex = 
-                world.Initiative 
-                |> List.findIndex (fun id -> id = creatureID)
-            let nextUp = (activeIndex + 1) % world.Initiative.Length
-            let nextActive = world.Initiative.Item nextUp
-            { world with 
-                Active = nextActive
-                Creatures = 
-                    world.Creatures 
-                    |> Map.add creatureID creatureState     
+    | Done ->
+        let creatureStats = world.Statistics.[creatureID]
+        let creatureState = 
+            { currentState with 
+                MovementLeft = creatureStats.Movement 
+                ActionTaken = None
             }
+        let activeIndex = 
+            world.Initiative 
+            |> List.findIndex (fun id -> id = creatureID)
+        let nextUp = (activeIndex + 1) % world.Initiative.Length
+        let nextActive = world.Initiative.Item nextUp
+        { world with 
+            Active = nextActive
+            Creatures = 
+                world.Creatures 
+                |> Map.add creatureID creatureState     
+        }
+
+let apply (creatureID, command) world =
+    match Rules.validate world (creatureID, command) with
+    | Error(msg) ->
+        printfn "%s" msg
+        world  
+    | Ok(creatureID, command) -> 
+        update world (creatureID, command)
 
 let creature1 = 
     CreatureID 1, 
@@ -268,22 +272,21 @@ let world =
     |> World.Initialize 
 
 world 
-|> update (CreatureID 1, Move N)
-// |> update (CreatureID 1, Action Dash) 
-|> update (CreatureID 1, Move N)
-|> update (CreatureID 1, Move N)
-|> update (CreatureID 1, Move N)
-|> update (CreatureID 1, Move SE) 
-|> update (CreatureID 1, Move SE) 
-|> update (CreatureID 1, Move SE) 
-|> update (CreatureID 1, Done) 
-|> update (CreatureID 2, Move SE) 
-|> update (CreatureID 2, Done)
-|> update (CreatureID 1, Move N) 
-|> update (CreatureID 1, Move N) 
-|> update (CreatureID 1, Move N) 
-|> update (CreatureID 1, Move N) 
-|> update (CreatureID 1, Move N) 
-|> update (CreatureID 1, Move N) 
-|> update (CreatureID 1, Action Dash) 
-|> update (CreatureID 1, Move N) 
+|> apply (CreatureID 1, Move N)
+|> apply (CreatureID 1, Move N)
+|> apply (CreatureID 1, Move N)
+|> apply (CreatureID 1, Move N)
+|> apply (CreatureID 1, Move SE) 
+|> apply (CreatureID 1, Move SE) 
+|> apply (CreatureID 1, Move SE) 
+|> apply (CreatureID 1, Done) 
+|> apply (CreatureID 2, Move SE) 
+|> apply (CreatureID 2, Done)
+|> apply (CreatureID 1, Move N) 
+|> apply (CreatureID 1, Move N) 
+|> apply (CreatureID 1, Move N) 
+|> apply (CreatureID 1, Move N) 
+|> apply (CreatureID 1, Move N) 
+|> apply (CreatureID 1, Move N) 
+|> apply (CreatureID 1, Action Dash) 
+|> apply (CreatureID 1, Move N) 
