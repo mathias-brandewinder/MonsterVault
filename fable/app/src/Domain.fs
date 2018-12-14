@@ -73,18 +73,25 @@ module Domain =
                 ActionTaken = None
             }
 
+    type BattleMap = {
+        Width: int
+        Height: int
+        }
+
     type World = {
+        BattleMap: BattleMap
         Initiative: CreatureID list
         Active: CreatureID
         Creatures: Map<CreatureID, Creature.State>
         Statistics: Map<CreatureID, Creature.Statistics>
         }
         with
-        static member Initialize(creatures: (CreatureID * Creature.Statistics * Position) list) =
+        static member Initialize(map: BattleMap, creatures: (CreatureID * Creature.Statistics * Position) list) =
             let initiative = 
                 creatures 
                 |> List.map (fun (creatureID, _, _) -> creatureID)
             {
+                BattleMap = map
                 Initiative = initiative
                 Active = initiative |> List.head
                 Creatures = 
@@ -250,19 +257,23 @@ module Domain =
         | Ok(creatureID, command) -> 
             update world (creatureID, command)
 
-    let creature1 = 
-        CreatureID 1, 
-        { Creature.Movement = 30<ft> },
-        { North = 0; West = 0 } 
-        
-    let creature2 = 
-        CreatureID 2, 
-        { Creature.Movement = 20<ft> },
-        { North = 5; West = 5 } 
+    module TestSample = 
 
-    let world = 
-        [
-            creature1
-            creature2
-        ]
-        |> World.Initialize 
+        let creature1 = 
+            CreatureID 1, 
+            { Creature.Movement = 30<ft> },
+            { North = 10; West = 10 } 
+            
+        let creature2 = 
+            CreatureID 2, 
+            { Creature.Movement = 20<ft> },
+            { North = 5; West = 5 } 
+
+        let map = {
+            Width = 40
+            Height = 40
+            }
+
+        let world =
+            (map, [ creature1; creature2 ])
+            |> World.Initialize 

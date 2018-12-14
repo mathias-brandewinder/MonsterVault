@@ -19,7 +19,7 @@ module App =
     type Msg = CreatureID * Command
 
     let init () = {
-        World = world
+        World = TestSample.world
         Journal = []
         }
 
@@ -44,24 +44,60 @@ module App =
 
     // VIEW (rendered with React)
 
-    let view (model:Model) dispatch =
+    let tileSize = 15
+
+    let tileAt (model:Model) (x,y) color =
+        let map = model.World.BattleMap
+        let width = map.Width
+        let height = map.Height
+        rect [ 
+            SVGAttr.X (tileSize * (width - x - 1))
+            SVGAttr.Y (tileSize * (height - y - 1))
+            SVGAttr.Width (tileSize - 2)
+            SVGAttr.Height (tileSize - 2)
+            SVGAttr.Rx 2
+            SVGAttr.Ry 2
+            SVGAttr.Fill color 
+          ] [ ]
+
+    let battleMap (model:Model) dispatch =
+
+        let map = model.World.BattleMap
+        let width = map.Width
+        let height = map.Height
+
+        svg [                    
+                SVGAttr.Width (width * tileSize)
+                SVGAttr.Height (height * tileSize)
+            ]
+            [
+                let map = model.World.BattleMap
+                for x in 0 .. (map.Width - 1) do
+                    for y in 0 .. (map.Height - 1) do
+                        yield tileAt model (x,y) "LightGray"
+
+                for creature in model.World.Creatures do
+                    let state = creature.Value
+                    let color = 
+                        if creature.Key = model.World.Active
+                        then "Red"
+                        else "Orange"
+                    yield tileAt model (state.Position.West, state.Position.North) color
+            ]
+
+    let panelStyle = Style [ Padding 5; MarginBottom 5; MarginLeft 5; BorderRadius 5; BackgroundColor "LightGray" ]
+
+    let state (model:Model) dispatch =
+        div [ panelStyle ] [ str (string (model.World.Creatures)) ]
+
+    let commands (model:Model) dispatch =
 
         let sendCommand cmd =
             (model.World.Active, cmd)
             |> dispatch
 
-        let journal =
-            div []
-                [
-                    for entry in model.Journal do
-                        yield str entry
-                        yield br []
-                ]
-
-        div []
-            [ 
-                div [] [ str (string (model.World)) ]
-
+        div [ panelStyle ]
+            [
                 div [] [ str "Movement" ]
 
                 button [ OnClick (fun _ -> sendCommand (Move N)) ] [ str "N" ]
@@ -80,10 +116,29 @@ module App =
                 div [] [ str "Other" ]
 
                 button [ OnClick (fun _ -> sendCommand (Done)) ] [ str "Done" ]
+            ]
+    
+    let journal (model:Model) dispatch =
+        div [ panelStyle ]
+            [
+                for entry in model.Journal do
+                    yield str entry
+                    yield br []
+            ]
 
-                div [] [ str "Journal" ]
-                
-                journal
+    let view (model:Model) dispatch =
+
+        div []
+            [ 
+                div [ Style [ Float "left" ]]
+                    [ battleMap model dispatch ]
+
+                div [ Style [ Float "left"; Width 200 ] ]
+                    [
+                        state model dispatch
+                        commands model dispatch
+                        journal model dispatch
+                    ]
             ]
 
     // App
