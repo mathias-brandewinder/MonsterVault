@@ -48,16 +48,39 @@ module Domain =
 
     let cellSize = 5<ft>
 
+    type CreatureID = | CreatureID of int
+
+    module Weapon =
+        
+        type MeleeInfo = { 
+            Range: int<ft> 
+            }
+        
+        type RangedInfo = {
+            ShortRange: int<ft>
+            LongRange: int<ft>
+            }
+
+        type Attack = 
+            | Melee of MeleeInfo
+            | Ranged of RangedInfo
+
+        type Description = {
+            Name: string
+            Attack: Attack
+            HitBonus: int
+            Damage: int
+            }
+
     type Action = 
         | Dash
-
-    type CreatureID = | CreatureID of int
+        | Attack of Weapon.Description * CreatureID
 
     [<RequireQualifiedAccess>]
     module Creature = 
 
         type Statistics = {
-            Movement: int<ft>
+            Movement: int<ft>            
             }
 
         type State = {
@@ -197,6 +220,29 @@ module Domain =
                 state
                 |> Result.bind (rule.Validate world)
                 )
+    
+    let alternatives (world: World) =
+
+        let creatureID = world.Active
+        let movements = 
+            [ N; NW; W; SW; S; SE; E; NE ] 
+            |> List.map Move
+        let standardActions = 
+            [ Dash ] 
+            |> List.map Action
+        let miscellaneous = [ Done ]
+
+        movements @ standardActions @ miscellaneous
+        |> List.map (fun action -> Rules.validate world (creatureID, action))
+        |> List.filter (
+            function 
+            | Ok(_) -> true 
+            | Error(_) -> false)
+        |> List.map (
+            function 
+            | Ok(command) -> command
+            | Error(_) -> failwith "Impossible"
+            )
 
     let update (world: World) (creatureID: CreatureID, cmd: Command) = 
         

@@ -92,30 +92,13 @@ module App =
 
     let commands (model:Model) dispatch =
 
-        let sendCommand cmd =
-            (model.World.Active, cmd)
-            |> dispatch
+        let cmds = alternatives model.World
 
         div [ panelStyle ]
             [
-                div [] [ str "Movement" ]
-
-                button [ OnClick (fun _ -> sendCommand (Move N)) ] [ str "N" ]
-                button [ OnClick (fun _ -> sendCommand (Move NW)) ] [ str "NW" ]
-                button [ OnClick (fun _ -> sendCommand (Move W)) ] [ str "W" ]
-                button [ OnClick (fun _ -> sendCommand (Move SW)) ] [ str "SW" ]
-                button [ OnClick (fun _ -> sendCommand (Move S)) ] [ str "S" ]
-                button [ OnClick (fun _ -> sendCommand (Move SE)) ] [ str "SE" ]
-                button [ OnClick (fun _ -> sendCommand (Move E)) ] [ str "E" ]
-                button [ OnClick (fun _ -> sendCommand (Move NE)) ] [ str "NE" ]
-
-                div [] [ str "Actions" ]
-
-                button [ OnClick (fun _ -> sendCommand (Action Dash)) ] [ str "Dash" ]
-
-                div [] [ str "Other" ]
-
-                button [ OnClick (fun _ -> sendCommand (Done)) ] [ str "Done" ]
+                yield div [] [ str "Alternatives" ]
+                for cmd in cmds -> 
+                    button [ OnClick (fun _ -> dispatch cmd) ] [ str (string cmd) ] 
             ]
     
     let journal (model:Model) dispatch =
