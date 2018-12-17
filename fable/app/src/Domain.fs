@@ -82,6 +82,9 @@ module Domain =
         | Dash
         | Attack of Weapon.Description * CreatureID
 
+    type Reaction =
+        | AttackOfOpportunity of Weapon.Description * CreatureID
+
     [<RequireQualifiedAccess>]
     module Creature = 
 
@@ -94,6 +97,7 @@ module Domain =
             MovementLeft: int<ft>
             Position: Position
             ActionTaken: Action option
+            ReactionTaken: Reaction option
             }
         
         let initialize (stats: Statistics, pos: Position) =
@@ -101,6 +105,7 @@ module Domain =
                 MovementLeft = stats.Movement
                 Position = pos
                 ActionTaken = None
+                ReactionTaken = None
             }
 
     type BattleMap = {
@@ -332,22 +337,23 @@ module Domain =
                         |> Map.add creatureID creatureState
                 }
         | Done ->
-            let creatureStats = world.Statistics.[creatureID]
-            let creatureState = 
-                { currentState with 
-                    MovementLeft = creatureStats.Movement 
-                    ActionTaken = None
-                }
             let activeIndex = 
                 world.Initiative 
                 |> List.findIndex (fun id -> id = creatureID)
             let nextUp = (activeIndex + 1) % world.Initiative.Length
-            let nextActive = world.Initiative.Item nextUp
+            let nextActiveID = world.Initiative.Item nextUp
+            let nextActiveStats = world.Statistics.[nextActiveID]
+            let nextActiveState = 
+                { world.Creatures.[nextActiveID] with
+                    MovementLeft = nextActiveStats.Movement
+                    ActionTaken = None
+                    ReactionTaken = None
+                }
             { world with 
-                Active = nextActive
+                Active = nextActiveID
                 Creatures = 
                     world.Creatures 
-                    |> Map.add creatureID creatureState     
+                    |> Map.add nextActiveID nextActiveState  
             }
 
     let apply (creatureID, command) world =
