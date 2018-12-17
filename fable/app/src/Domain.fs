@@ -324,7 +324,6 @@ module Domain =
                 let creatureStats = world.Statistics.[creatureID]
                 let creatureState = 
                     { currentState with 
-                        MovementLeft = currentState.MovementLeft + creatureStats.Movement
                         ActionTaken = Some (Attack(weapon, target))
                     }
                 { world with
