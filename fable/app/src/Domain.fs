@@ -47,9 +47,15 @@ module Domain =
             }
 
     let cellSize = 5<ft>
+    
+    let distance pos1 pos2 = 
+        max
+            (abs (pos1.North - pos2.North))
+            (abs (pos1.West - pos2.West))
+        |> fun d -> cellSize * d
 
     type CreatureID = | CreatureID of int
-
+    
     module Weapon =
         
         type MeleeInfo = { 
@@ -80,7 +86,8 @@ module Domain =
     module Creature = 
 
         type Statistics = {
-            Movement: int<ft>            
+            Movement: int<ft>
+            Attacks: Set<Weapon.Description> 
             }
 
         type State = {
@@ -207,11 +214,36 @@ module Domain =
                     | _ -> Ok (creatureID, command)
             }
 
+        let ``A creature can only attack within weapon range`` =
+            { new Rule with
+                member this.Validate world (creatureID, command) =
+                    let currentState = world.Creatures.[creatureID]
+                    match command with
+                    | Action(action) ->
+                        match action with
+                        | Attack (weapon, targetID) ->
+                            let target = world.Creatures.[targetID]
+                            let dist = distance currentState.Position target.Position
+                            let maximumDistance = 
+                                match weapon.Attack with
+                                | Weapon.Attack.Melee (info) -> info.Range
+                                | Weapon.Attack.Ranged (info) -> info.LongRange
+                            if dist <= maximumDistance
+                            then Ok (creatureID, command)
+                            else 
+                                sprintf "maximum range for attack is %i" dist
+                                |> errorMessage (creatureID, command) 
+                                |> Error
+                        | _ -> Ok (creatureID, command)
+                    | _ -> Ok (creatureID, command)
+            }
+
         let rules = [
             ``A creature must be active to act``
             ``A creature cannot move if it has not enough movement left``
             ``A creature cannot move to a space occupied by another creature``
             ``A creature can take at most one action per turn``
+            ``A creature can only attack within weapon range``
             ]
 
         let validate world (creatureID, command) =
@@ -230,9 +262,21 @@ module Domain =
         let standardActions = 
             [ Dash ] 
             |> List.map Action
+        let attacks = 
+            world.Statistics.[creatureID].Attacks
+            |> Seq.collect (fun attack -> 
+                world.Initiative
+                |> Seq.filter (fun targetID -> targetID <> creatureID)
+                |> Seq.map (fun targetID ->
+                    Attack(attack, targetID) 
+                    |> Action
+                    )
+                )
+            |> Seq.toList
+
         let miscellaneous = [ Done ]
 
-        movements @ standardActions @ miscellaneous
+        movements @ standardActions @ miscellaneous @ attacks
         |> List.map (fun action -> Rules.validate world (creatureID, action))
         |> List.filter (
             function 
@@ -276,6 +320,18 @@ module Domain =
                         world.Creatures 
                         |> Map.add creatureID creatureState
                 }
+            | Attack(weapon, target) ->
+                let creatureStats = world.Statistics.[creatureID]
+                let creatureState = 
+                    { currentState with 
+                        MovementLeft = currentState.MovementLeft + creatureStats.Movement
+                        ActionTaken = Some (Attack(weapon, target))
+                    }
+                { world with
+                    Creatures = 
+                        world.Creatures 
+                        |> Map.add creatureID creatureState
+                }
         | Done ->
             let creatureStats = world.Statistics.[creatureID]
             let creatureState = 
@@ -305,14 +361,35 @@ module Domain =
 
     module TestSample = 
 
+        let scimitar = {
+            Weapon.Description.Name = "Scimitar"
+            Weapon.Description.Attack = Weapon.Melee ({ Range = 5<ft> })
+            Weapon.Description.HitBonus = 4
+            Weapon.Description.Damage = 5
+            }
+
+        let shortbow = {
+            Weapon.Description.Name = "Shortbow"
+            Weapon.Description.Attack = 
+                Weapon.Ranged ({ ShortRange = 80<ft>; LongRange = 320<ft> })
+            Weapon.Description.HitBonus = 4
+            Weapon.Description.Damage = 5
+            }
+
         let creature1 = 
             CreatureID 1, 
-            { Creature.Movement = 30<ft> },
+            { 
+                Creature.Movement = 30<ft>
+                Creature.Attacks = [ scimitar; shortbow ] |> Set.ofList
+            },
             { North = 10; West = 10 } 
             
         let creature2 = 
             CreatureID 2, 
-            { Creature.Movement = 20<ft> },
+            { 
+                Creature.Movement = 40<ft>
+                Creature.Attacks = [ scimitar ] |> Set.ofList
+            },
             { North = 5; West = 5 } 
 
         let map = {
