@@ -2,6 +2,7 @@
 
 - out-of-turn activities, ex: opportunity attack
 - crossing creature space and size 
+- handling of creatures leaving battle map
 
 ## Backlog
 
