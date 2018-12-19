@@ -1,17 +1,19 @@
 # TODO / ISSUES
 
-- out-of-turn activities, ex: opportunity attack
-- crossing creature space and size 
-- handling of creatures leaving battle map
+- display of events in journal (ex: result of an attack)
 - weapon equipped, equip, sheath, drop
+- representation of allies and enemies
+- handling of creatures leaving battle map
+- representing Advantage, Disadvantage Roll
+- crossing creature space and size 
+- Multi Attacks: 1 Action, 2 Attacks
+- out-of-turn activities, ex: opportunity attack
 
 ## Backlog
 
 - Weapons/attacks that are "natural", ex Claw
 - Weapon proficiency bonus and Hit Dice
 - Proficiency, Light/Heavy weapons
-- Multi Attacks
-- Representing Advantage, Disadvantage Roll
 - Figure out nicer template modification when armor changes
 - Find list of Monster Tags
 ? Is there an equivalent to Proficiency for Monsters

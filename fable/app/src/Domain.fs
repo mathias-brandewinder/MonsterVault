@@ -1,6 +1,8 @@
 namespace MonsterVault
 
-module Domain =
+[<Measure>]type ft
+
+module DiceRolls = 
 
     open System
 
@@ -13,12 +15,12 @@ module Domain =
         | Add of Roll list
         static member (+) (v1: Roll, v2: Roll) = 
             match v1, v2 with
-            | Add(rolls1), Add(rolls2) -> Add(rolls1 @ rolls2)
-            | Add(rolls1), roll2 -> Add(rolls1 @ [ roll2 ])
-            | roll1, Add(rolls2) -> Add(roll1 :: rolls2)
-            | roll1, roll2 -> Add [ roll1 ; roll2 ]
-        static member (+) (roll: Roll, num:int) = roll + Value num
-        static member (+) (num: int, roll:Roll) = Value num + roll
+            | Add (rolls1), Add (rolls2) -> Add (rolls1 @ rolls2)
+            | Add (rolls1), roll2 -> Add(rolls1 @ [ roll2 ])
+            | roll1, Add (rolls2) -> Add(roll1 :: rolls2)
+            | roll1, roll2 -> Add [ roll1; roll2 ]
+        static member (+) (roll: Roll, num: int) = roll + Value num
+        static member (+) (num: int, roll: Roll) = Value num + roll
         static member roll =
             let rng = Random ()
             fun (roll: Roll) ->
@@ -27,7 +29,7 @@ module Domain =
                     Seq.init times (fun _ -> rng.Next(1, sides))
                     |> Seq.sum
                 | Value (value) -> value
-                | Add(rolls) -> rolls |> List.sumBy Roll.roll
+                | Add (rolls) -> rolls |> List.sumBy Roll.roll
 
     let d4 = D 4
     let d6 = D 6
@@ -36,7 +38,7 @@ module Domain =
     let d12 = D 12
     let d20 = D 20
 
-    [<Measure>]type ft
+module Space = 
 
     type Direction = 
         | N
@@ -88,36 +90,39 @@ module Domain =
             (abs (pos1.West - pos2.West))
         |> fun d -> cellSize * d
 
+module Weapon =
+    
+    open DiceRolls
+
+    type MeleeInfo = { 
+        Range: int<ft> 
+        }
+    
+    type RangedInfo = {
+        ShortRange: int<ft>
+        LongRange: int<ft>
+        }
+
+    type Attack = 
+        | Melee of MeleeInfo
+        | Ranged of RangedInfo
+
+    type Description = {
+        Name: string
+        Attack: Attack
+        Damage: Roll
+        }
+        
+module Domain =
+
+    open DiceRolls
+    open Space
+
     type CreatureID = | CreatureID of int
     
-    module Weapon =
-        
-        type MeleeInfo = { 
-            Range: int<ft> 
-            }
-        
-        type RangedInfo = {
-            ShortRange: int<ft>
-            LongRange: int<ft>
-            }
-
-        type Attack = 
-            | Melee of MeleeInfo
-            | Ranged of RangedInfo
-
-        type Description = {
-            Name: string
-            Attack: Attack
-            HitBonus: int
-            Damage: Roll
-            }
-
     type Action = 
         | Dash
         | Attack of Weapon.Description * CreatureID
-
-    type Reaction =
-        | AttackOfOpportunity of Weapon.Description * CreatureID
 
     [<RequireQualifiedAccess>]
     module Creature = 
@@ -134,7 +139,6 @@ module Domain =
             HitPointsLeft: int
             Position: Position
             ActionTaken: Action option
-            ReactionTaken: Reaction option
             }
         
         let initialize (stats: Statistics, pos: Position) =
@@ -143,7 +147,6 @@ module Domain =
                 HitPointsLeft = stats.HitPoints
                 Position = pos
                 ActionTaken = None
-                ReactionTaken = None
             }
 
     type BattleMap = {
@@ -367,7 +370,6 @@ module Domain =
                 let creatureStats = world.Statistics.[creatureID]
                 let targetState =
                     let attack = 1 * d20 |> Roll.roll
-                    printfn "Attack: %i" attack
                     let target = world.Statistics.[targetID]
                     let targetAC = target.ArmorClass
                     let targetState = world.Creatures.[targetID]
@@ -375,7 +377,6 @@ module Domain =
                         if attack < targetAC
                         then 0
                         else weapon.Damage |> Roll.roll   
-                    printfn "Damage %i" damage                     
                     { targetState with HitPointsLeft = targetState.HitPointsLeft - damage }
 
                 let creatureState = 
@@ -400,7 +401,6 @@ module Domain =
                 { world.Creatures.[nextActiveID] with
                     MovementLeft = nextActiveStats.Movement
                     ActionTaken = None
-                    ReactionTaken = None
                 }
             { world with 
                 Active = nextActiveID
@@ -417,48 +417,50 @@ module Domain =
         | Ok(creatureID, command) -> 
             update world (creatureID, command)
 
-    module TestSample = 
+module TestSample = 
 
-        let scimitar = {
-            Weapon.Description.Name = "Scimitar"
-            Weapon.Description.Attack = Weapon.Melee ({ Range = 5<ft> })
-            Weapon.Description.HitBonus = 4
-            Weapon.Description.Damage = 1 * d6
-            }
+    open DiceRolls
+    open Space
+    open Domain
 
-        let shortbow = {
-            Weapon.Description.Name = "Shortbow"
-            Weapon.Description.Attack = 
-                Weapon.Ranged ({ ShortRange = 80<ft>; LongRange = 320<ft> })
-            Weapon.Description.HitBonus = 4
-            Weapon.Description.Damage = 1 * d6
-            }
+    let scimitar = {
+        Weapon.Description.Name = "Scimitar"
+        Weapon.Description.Attack = Weapon.Melee ({ Range = 5<ft> })
+        Weapon.Description.Damage = 1 * d6
+        }
 
-        let creature1 = 
-            CreatureID 1, 
-            { 
-                Creature.HitPoints = 7
-                Creature.Movement = 30<ft>
-                Creature.ArmorClass = 15
-                Creature.Attacks = [ scimitar; shortbow ]
-            },
-            { North = 10; West = 10 } 
-            
-        let creature2 = 
-            CreatureID 2, 
-            { 
-                Creature.HitPoints = 7
-                Creature.Movement = 30<ft>
-                Creature.ArmorClass = 15
-                Creature.Attacks = [ scimitar ]
-            },
-            { North = 5; West = 5 } 
+    let shortbow = {
+        Weapon.Description.Name = "Shortbow"
+        Weapon.Description.Attack = 
+            Weapon.Ranged ({ ShortRange = 80<ft>; LongRange = 320<ft> })
+        Weapon.Description.Damage = 1 * d6
+        }
 
-        let map = {
-            Width = 40
-            Height = 40
-            }
+    let creature1 = 
+        CreatureID 1, 
+        { 
+            Creature.HitPoints = 7
+            Creature.Movement = 30<ft>
+            Creature.ArmorClass = 15
+            Creature.Attacks = [ scimitar; shortbow ]
+        },
+        { North = 10; West = 10 } 
+        
+    let creature2 = 
+        CreatureID 2, 
+        { 
+            Creature.HitPoints = 7
+            Creature.Movement = 30<ft>
+            Creature.ArmorClass = 15
+            Creature.Attacks = [ scimitar ]
+        },
+        { North = 5; West = 5 } 
 
-        let world =
-            (map, [ creature1; creature2 ])
-            |> World.Initialize 
+    let map = {
+        Width = 40
+        Height = 40
+        }
+
+    let world =
+        (map, [ creature1; creature2 ])
+        |> World.Initialize 

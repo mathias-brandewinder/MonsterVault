@@ -1,5 +1,4 @@
 namespace MonsterVault
-open Fable.Import.React
 
 module App =
 
