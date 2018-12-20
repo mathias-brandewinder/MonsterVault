@@ -7,6 +7,8 @@ Notes / TODOs
 *)
 
 #load "./fable/app/src/Domain.fs"
+open MonsterVault
+open MonsterVault.Space
 open MonsterVault.Domain
 
 let apply (creatureID, command) world =
@@ -36,3 +38,9 @@ TestSample.world
 |> apply (CreatureID 1, Move N) 
 |> apply (CreatureID 1, Action Dash) 
 |> apply (CreatureID 1, Move N) 
+
+TestSample.world.Statistics.[CreatureID 1] 
+|> Attacks.using TestSample.spear
+
+TestSample.world.Statistics.[CreatureID 1] 
+|> Attacks.using TestSample.scimitar

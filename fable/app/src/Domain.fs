@@ -39,6 +39,44 @@ module DiceRolls =
     let d12 = D 12
     let d20 = D 20
 
+module Abilities = 
+
+    type Ability = 
+        | STR
+        | DEX
+        | CON 
+        | INT 
+        | WIS
+        | CHA
+
+    type Scores = {
+        STR: int
+        DEX: int
+        CON: int
+        INT: int
+        WIS: int
+        CHA: int
+        }
+
+    let scoreToModifier score = 
+        (score / 2) - 5
+        |> min 10
+        |> max -5  
+
+    let score scores ability =
+        match ability with
+        | STR -> scores.STR
+        | DEX -> scores.DEX
+        | CON -> scores.CON
+        | INT -> scores.INT 
+        | WIS -> scores.WIS
+        | CHA -> scores.CHA  
+
+    let modifier abilities ability = 
+        ability
+        |> score abilities
+        |> scoreToModifier
+
 module Space = 
 
     type Direction = 
@@ -184,8 +222,24 @@ module Weapons =
         Attacks: Attacks
         }
 
+[<RequireQualifiedAccess>]
+module Creature = 
+
+    open Weapons
+    open Abilities
+
+    type Statistics = {
+        Abilities: Scores
+        Movement: int<ft>
+        HitPoints: int
+        ArmorClass: int
+        Attacks: List<Weapon> 
+        WeaponsProficiency: Weapons.Proficiency
+        }
+
 module Attacks = 
 
+    open Abilities
     open Weapons
 
     type AttackType = 
@@ -205,14 +259,42 @@ module Attacks =
         Damage: Roll
         }
 
-    let using (weapon: Weapon) =
+    let hitBonus (stats: Creature.Statistics) (weapon: Weapon) =
+        
+        let finesse = 
+            match weapon.Attacks with
+            | Attacks.Melee(info) -> info.Finesse
+            | Attacks.Thrown(info) -> info.MeleeAttacks.Finesse
+            | Attacks.Ranged(_) -> false
+
+        let abilityBonus = 
+            match finesse with
+            | true ->  [ STR; DEX ] 
+            | false -> 
+                match weapon.Attacks with
+                | Attacks.Melee(_) -> [ STR]
+                | Attacks.Ranged(_) -> [ DEX ]
+                | Attacks.Thrown(_) -> [ STR ]
+            |> Seq.maxBy (modifier stats.Abilities)
+            |> modifier stats.Abilities
+        
+        let proficiencyBonus = 
+            match (weapon.Stats.Proficiency, stats.WeaponsProficiency) with
+            | Martial, Simple -> 0
+            | _ -> 0 // TODO: figure out what that is for a creature
+
+        abilityBonus + proficiencyBonus
+
+    let using (weapon: Weapon) (stats: Creature.Statistics) =
+
+        let bonus = hitBonus stats weapon  
         let meleeAttacks (attacks: Melee.Attacks) = 
             match attacks.Handling with
             | Melee.Limited(info) -> 
                 {   
                     Weapon = weapon.Name
                     Type = AttackType.Melee
-                    HitBonus = 0 // TODO fix this
+                    HitBonus = bonus
                     Grip = info.Grip
                     Damage = info.Damage
                     Reach = attacks.Reach |> Melee   
@@ -223,7 +305,7 @@ module Attacks =
                     {
                         Weapon = weapon.Name
                         Type = AttackType.Melee
-                        HitBonus = 0 // TODO fix this
+                        HitBonus = bonus
                         Grip = SingleHanded
                         Damage = info.SingleHandedDamage
                         Reach = attacks.Reach |> Melee   
@@ -231,7 +313,7 @@ module Attacks =
                     {
                         Weapon = weapon.Name
                         Type = AttackType.Melee
-                        HitBonus = 0 // TODO fix this
+                        HitBonus = bonus
                         Grip = TwoHanded
                         Damage = info.TwoHandedDamage
                         Reach = attacks.Reach |> Melee   
@@ -242,7 +324,7 @@ module Attacks =
             {
                 Weapon = weapon.Name
                 Type = AttackType.Ranged
-                HitBonus = 0 // TODO fix this
+                HitBonus = bonus
                 Grip = info.Usage.Grip
                 Damage = info.Usage.Damage
                 Reach = info.Range |> Ranged
@@ -256,7 +338,7 @@ module Attacks =
             [
                 yield! info.MeleeAttacks |> meleeAttacks
                 yield! info.RangedAttacks |> rangedAttacks
-            ]        
+            ]    
 
 module Domain =
 
@@ -273,13 +355,6 @@ module Domain =
     [<RequireQualifiedAccess>]
     module Creature = 
 
-        type Statistics = {
-            Movement: int<ft>
-            HitPoints: int
-            ArmorClass: int
-            Attacks: List<Weapon> 
-            }
-
         type State = {
             MovementLeft: int<ft>
             HitPointsLeft: int
@@ -287,7 +362,7 @@ module Domain =
             ActionTaken: Action option
             }
         
-        let initialize (stats: Statistics, pos: Position) =
+        let initialize (stats: Creature.Statistics, pos: Position) =
             {
                 MovementLeft = stats.Movement
                 HitPointsLeft = stats.HitPoints
@@ -448,6 +523,7 @@ module Domain =
     let alternatives (world: World) =
 
         let creatureID = world.Active
+        let creature = world.Statistics.[creatureID]
         let movements = 
             [ N; NW; W; SW; S; SE; E; NE ] 
             |> List.map Move
@@ -456,7 +532,7 @@ module Domain =
             |> List.map Action
         let attacks = 
             world.Statistics.[creatureID].Attacks
-            |> Seq.collect (Attacks.using)
+            |> Seq.collect (fun weapon -> Attacks.using weapon creature)
             |> Seq.collect (fun attack -> 
                 world.Initiative
                 |> Seq.filter (fun targetID -> targetID <> creatureID)
@@ -615,12 +691,23 @@ module TestSample =
             }
         }
 
+    let stats: Abilities.Scores = {
+        STR = 8
+        DEX = 14
+        CON = 10
+        INT = 10
+        WIS = 8
+        CHA = 8
+        }
+
     let creature1 = 
         CreatureID 1, 
         { 
+            Creature.Abilities = stats
             Creature.HitPoints = 7
             Creature.Movement = 30<ft>
             Creature.ArmorClass = 15
+            Creature.WeaponsProficiency = Weapons.Martial
             Creature.Attacks = [ scimitar; shortbow ]
         },
         { North = 10; West = 10 } 
@@ -628,9 +715,11 @@ module TestSample =
     let creature2 = 
         CreatureID 2, 
         { 
+            Creature.Abilities = stats
             Creature.HitPoints = 7
             Creature.Movement = 30<ft>
             Creature.ArmorClass = 15
+            Creature.WeaponsProficiency = Weapons.Martial
             Creature.Attacks = [ scimitar ]
         },
         { North = 5; West = 5 } 
