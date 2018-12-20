@@ -2,6 +2,7 @@ namespace MonsterVault
 
 [<Measure>]type ft
 
+[<AutoOpen>]
 module DiceRolls = 
 
     open System
@@ -90,39 +91,184 @@ module Space =
             (abs (pos1.West - pos2.West))
         |> fun d -> cellSize * d
 
-module Weapon =
-    
-    open DiceRolls
+module Weapons = 
 
-    type MeleeInfo = { 
-        Range: int<ft> 
+    type Damage = Roll
+
+    type Grip =
+        | SingleHanded
+        | TwoHanded
+
+    type Usage = {
+        Grip: Grip
+        Damage: Damage
         }
-    
-    type RangedInfo = {
-        ShortRange: int<ft>
-        LongRange: int<ft>
+
+    module Melee = 
+
+        type Versatile = {
+            SingleHandedDamage: Damage
+            TwoHandedDamage: Damage
+            }
+
+        type Handling = 
+            | Limited of Usage
+            | Versatile of Versatile
+
+        type Attacks = {
+            Finesse: bool
+            Handling: Handling
+            Reach: int<ft>
+            }
+
+    module Ranged = 
+
+        type Range = {
+            Short: int<ft>
+            Long: int<ft>
+            }
+
+        type Attacks = {
+            Range: Range
+            Usage: Usage
+            }
+
+    module Thrown = 
+
+        type Attacks = {
+            Melee: int<ft>
+            ShortRange: int<ft>
+            LongRange: int<ft>
+            Handling: Melee.Handling
+            }
+            with
+            member this.MeleeAttacks: Melee.Attacks = {
+                Finesse = false
+                Handling = this.Handling
+                Reach = this.Melee
+                }
+            member this.RangedAttacks: Ranged.Attacks = {
+                Range = { Short = this.ShortRange; Long = this.LongRange }
+                Usage = 
+                    match this.Handling with
+                    | Melee.Limited(usage) -> usage
+                    | Melee.Versatile(usage) -> 
+                        { 
+                            Grip = SingleHanded
+                            Damage = usage.SingleHandedDamage 
+                        }
+                }
+
+    type Attacks = 
+        | Melee of Melee.Attacks
+        | Ranged of Ranged.Attacks
+        | Thrown of Thrown.Attacks
+
+    type Proficiency = 
+        | Simple
+        | Martial
+
+    type Weight = 
+        | Light
+        | Medium
+        | Heavy 
+
+    type Stats = {
+        Proficiency: Proficiency
+        Weight: Weight
         }
 
-    type Attack = 
-        | Melee of MeleeInfo
-        | Ranged of RangedInfo
-
-    type Description = {
+    type Weapon = {
         Name: string
-        Attack: Attack
+        Stats: Stats
+        Attacks: Attacks
+        }
+
+module Attacks = 
+
+    open Weapons
+
+    type AttackType = 
+        | Melee
+        | Ranged
+
+    type Reach = 
+        | Melee of int<ft>
+        | Ranged of Ranged.Range
+
+    type Statistics = {
+        Weapon: string
+        Grip: Grip
+        Type: AttackType
+        Reach: Reach
+        HitBonus: int
         Damage: Roll
         }
-        
+
+    let using (weapon: Weapon) =
+        let meleeAttacks (attacks: Melee.Attacks) = 
+            match attacks.Handling with
+            | Melee.Limited(info) -> 
+                {   
+                    Weapon = weapon.Name
+                    Type = AttackType.Melee
+                    HitBonus = 0 // TODO fix this
+                    Grip = info.Grip
+                    Damage = info.Damage
+                    Reach = attacks.Reach |> Melee   
+                }
+                |> List.singleton
+            | Melee.Versatile(info) ->
+                [
+                    {
+                        Weapon = weapon.Name
+                        Type = AttackType.Melee
+                        HitBonus = 0 // TODO fix this
+                        Grip = SingleHanded
+                        Damage = info.SingleHandedDamage
+                        Reach = attacks.Reach |> Melee   
+                    }
+                    {
+                        Weapon = weapon.Name
+                        Type = AttackType.Melee
+                        HitBonus = 0 // TODO fix this
+                        Grip = TwoHanded
+                        Damage = info.TwoHandedDamage
+                        Reach = attacks.Reach |> Melee   
+                    }
+                ]
+
+        let rangedAttacks (info: Ranged.Attacks) = 
+            {
+                Weapon = weapon.Name
+                Type = AttackType.Ranged
+                HitBonus = 0 // TODO fix this
+                Grip = info.Usage.Grip
+                Damage = info.Usage.Damage
+                Reach = info.Range |> Ranged
+            }
+            |> List.singleton
+
+        match weapon.Attacks with
+        | Weapons.Melee(info) -> meleeAttacks info
+        | Weapons.Ranged(info) -> rangedAttacks info
+        | Weapons.Thrown(info) -> 
+            [
+                yield! info.MeleeAttacks |> meleeAttacks
+                yield! info.RangedAttacks |> rangedAttacks
+            ]        
+
 module Domain =
 
     open DiceRolls
     open Space
+    open Weapons
 
     type CreatureID = | CreatureID of int
     
     type Action = 
         | Dash
-        | Attack of Weapon.Description * CreatureID
+        | Attack of Attacks.Statistics * CreatureID
 
     [<RequireQualifiedAccess>]
     module Creature = 
@@ -131,7 +277,7 @@ module Domain =
             Movement: int<ft>
             HitPoints: int
             ArmorClass: int
-            Attacks: List<Weapon.Description> 
+            Attacks: List<Weapon> 
             }
 
         type State = {
@@ -271,9 +417,9 @@ module Domain =
                             let target = world.Creatures.[targetID]
                             let dist = distance currentState.Position target.Position
                             let maximumDistance = 
-                                match weapon.Attack with
-                                | Weapon.Attack.Melee (info) -> info.Range
-                                | Weapon.Attack.Ranged (info) -> info.LongRange
+                                match weapon.Reach with
+                                | Attacks.Reach.Melee (reach) -> reach
+                                | Attacks.Reach.Ranged (range) -> range.Long
                             if dist <= maximumDistance
                             then Ok (creatureID, command)
                             else 
@@ -310,10 +456,11 @@ module Domain =
             |> List.map Action
         let attacks = 
             world.Statistics.[creatureID].Attacks
+            |> Seq.collect (Attacks.using)
             |> Seq.collect (fun attack -> 
                 world.Initiative
                 |> Seq.filter (fun targetID -> targetID <> creatureID)
-                |> Seq.map (fun targetID ->
+                |> Seq.map (fun targetID ->                   
                     Attack(attack, targetID) 
                     |> Action
                     )
@@ -419,21 +566,53 @@ module Domain =
 
 module TestSample = 
 
-    open DiceRolls
     open Space
+    open Weapons
     open Domain
 
     let scimitar = {
-        Weapon.Description.Name = "Scimitar"
-        Weapon.Description.Attack = Weapon.Melee ({ Range = 5<ft> })
-        Weapon.Description.Damage = 1 * d6
+        Name = "scimitar"
+        Stats = {
+            Proficiency = Martial
+            Weight = Light
+            }
+        Attacks = 
+            Melee {
+                Handling = Melee.Limited { Grip = SingleHanded; Damage = 1 * d6 }
+                Reach = 5<ft>
+                Finesse = false      
+            }
         }
 
-    let shortbow = {
-        Weapon.Description.Name = "Shortbow"
-        Weapon.Description.Attack = 
-            Weapon.Ranged ({ ShortRange = 80<ft>; LongRange = 320<ft> })
-        Weapon.Description.Damage = 1 * d6
+    let shortbow = { 
+        Name = "shortbow"
+        Stats = {
+            Proficiency = Simple
+            Weight = Medium
+            }
+        Attacks = 
+            Ranged {
+                Range = { Short = 80<ft>; Long = 320<ft> }
+                Usage = { Grip = TwoHanded; Damage = 1 * d6 }
+                }                    
+        }
+
+    let spear = {
+        Name = "spear"
+        Stats = {
+            Proficiency = Simple
+            Weight = Medium
+            }
+        Attacks = 
+            Thrown {
+                Melee = 5<ft>
+                ShortRange = 20<ft>
+                LongRange = 60<ft>
+                Handling = Melee.Versatile {
+                    SingleHandedDamage = 1 * d6
+                    TwoHandedDamage = 1 * d8
+                }
+            }
         }
 
     let creature1 = 
