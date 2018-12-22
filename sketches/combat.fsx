@@ -6,7 +6,7 @@ Notes / TODOs
 - crossing creature space and size 
 *)
 
-#load "./fable/app/src/Domain.fs"
+#load "../fable/app/src/Domain.fs"
 open MonsterVault
 open MonsterVault.Space
 open MonsterVault.Domain
