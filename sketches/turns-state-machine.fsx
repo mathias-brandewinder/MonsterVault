@@ -43,6 +43,28 @@ module Actions =
         | FinishTurn 
         | Action of Action
 
+    let alternatives (state: GlobalState) =
+        state.TurnState
+        |> Option.bind (fun turn ->
+            let creature = turn.Creature
+            if state.CreatureState.[creature].CanAct
+            then 
+                [           
+                    if turn.MovementLeft >= 5
+                    then yield Action(Move) 
+                    if (not turn.HasTakenAction)
+                    then                        
+                        yield! 
+                            state.Initiative
+                            |> List.filter (fun target -> target <> creature)
+                            |> List.filter (fun target -> not (state.CreatureState.[target].Dead))
+                            |> List.map (fun target -> Action(Attack target))
+                    yield FinishTurn
+                ]
+                |> Some
+            else None
+            )
+
 module Reactions = 
 
     type Reaction =
@@ -155,11 +177,7 @@ let init () =
     let machine = 
         { 
             ActionNeeded.Creature = CreatureID 1
-            ActionNeeded.Alternatives = [ 
-                ActionTaken.Action(Move) 
-                ActionTaken.Action(Attack(CreatureID 2))
-                FinishTurn 
-                ]  
+            ActionNeeded.Alternatives = Actions.alternatives globalState |> Option.get
         }
         |> ActionNeeded
 
@@ -195,24 +213,18 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
             |> List.findIndex (fun x -> x = turn.Creature)
             |> fun index -> (index + 1) % (globalState.Initiative.Length)
             |> fun index -> globalState.Initiative.Item index
-        // TODO properly implement
-        if globalState.CreatureState.[nextCreatureUp].CanAct
-        then 
-            let turn = {
-                Creature = nextCreatureUp
-                MovementLeft = 30                
-                HasTakenAction = false
-                }
-                 
-            let alternatives = [
-                Actions.Action(Actions.Move)
-                Actions.FinishTurn
-                ]
-            { globalState with TurnState = Some turn }, 
+        let nextTurn = {
+            Creature = nextCreatureUp
+            MovementLeft = 30                
+            HasTakenAction = false
+            }
+        let globalState = { globalState with TurnState = Some nextTurn }
+        let alternatives = Actions.alternatives globalState
+        match alternatives with
+        | None -> FinishTurn nextCreatureUp |> execute (globalState, machine)
+        | Some alternatives ->
+            globalState, 
             ActionNeeded({ Creature = nextCreatureUp; Alternatives = alternatives })
-
-        else
-            FinishTurn nextCreatureUp |> execute (globalState, machine)
 
     | AttemptAction (creature, action) -> 
         let outcome = 
@@ -295,20 +307,17 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
         // todo is turn over, is combat over
         // else action needed from current turn
         // TODO determine alternatives based on state
-        let currentTurn = globalState.TurnState.Value
-        let alternatives = [ 
-            if currentTurn.MovementLeft >= 5 then yield Actions.Action(Move)
-            if currentTurn.HasTakenAction = false then yield Actions.Action(Attack(CreatureID 2))
-            ]
-        match alternatives with 
-        | [] ->
-            FinishTurn currentTurn.Creature 
-            |> execute (globalState, machine)
-        | alts ->
-            // we can still do something
-            let machine = 
-                ActionNeeded({ Creature = currentTurn.Creature; Alternatives = ActionTaken.FinishTurn :: alts })
-            globalState, machine
+        match globalState.TurnState with 
+        | None -> failwith "Impossible: when an action completes, there must be a turn"
+        | Some turn ->
+            match Actions.alternatives globalState with 
+            | None -> 
+                FinishTurn turn.Creature 
+                |> execute (globalState, machine)
+            | Some alternatives ->
+                let machine = 
+                    ActionNeeded({ Creature = turn.Creature; Alternatives = alternatives })
+                globalState, machine 
 
     | ReactionTriggered(creature, reaction) -> 
         globalState, machine
@@ -453,4 +462,4 @@ let state4 = update state3 (CreatureReaction((CreatureID 2), Reactions.Reaction(
 
 let state5 = update state4 (CreatureReaction((CreatureID 3), Reactions.Reaction(OpportunityAttack (CreatureID 1))))
 
-let state6 = update state5 (CreatureAction((CreatureID 1), Actions.FinishTurn))
+let state6 = update state5 (CreatureAction((CreatureID 1), Actions.Action(Action.Move)))
