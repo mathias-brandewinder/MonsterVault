@@ -69,7 +69,7 @@ module Reactions =
 
     type Reaction =
         | OpportunityAttack of CreatureID
-        | Riposte
+        | Riposte of CreatureID
 
     type ReactionTaken = 
         | Pass 
@@ -89,12 +89,15 @@ module Reactions =
     let toReaction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
         if creature = trigger
         then None
-        elif (globalState.CreatureState.[creature].CanReact)
+        elif (not globalState.CreatureState.[creature].CanReact)
         then None
         else
             match outcome with
             | Move _ -> None
-            | SuccessfulAttack _ -> Some(creature, Riposte) 
+            | SuccessfulAttack (origin, target) -> 
+                if creature = target 
+                then Some (creature, Riposte origin)
+                else None 
             | FailedAttack _ -> None
 
 open Actions 
@@ -196,7 +199,7 @@ type Transition =
     | AttemptReaction of (CreatureID * Reactions.Reaction)
     | ConfirmReaction of UnconfirmedReactionResult
     | ReactionCompleted
-    | ReactionCancelled
+    | ReactionCancelled of CreatureID
     | ExecuteReaction of (CreatureID * Outcome)
     | PassReaction of CreatureID
 
@@ -328,16 +331,18 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
             | Reaction.OpportunityAttack target -> 
                 // TODO properly handle attack resolution
                 Outcome.SuccessfulAttack (creature, target)
-            | Reaction.Riposte -> failwith "TODO implement Riposte"
+            | Reaction.Riposte target -> 
+                // TODO properly handle riposte / attack resolution
+                Outcome.SuccessfulAttack (creature, target) 
         let alreadyReacting = machine |> Machine.Reacting
         let notReacting = 
             globalState.Initiative 
-            |> List.filter (fun x -> not (alreadyReacting |> List.contains x))            
+            |> List.filter (fun x -> not (alreadyReacting |> List.contains x))     
         let reactions = 
             notReacting
-            |> List.filter (fun x -> alreadyReacting |> List.contains x)
             |> List.choose (
                 Reactions.toReaction globalState (creature, outcome))
+
         match reactions with
         | [] -> 
             ExecuteReaction (creature, outcome) 
@@ -354,7 +359,34 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
             |> execute (globalState, machine)
 
     | ConfirmReaction unconfirmed ->
-        failwith "TODO implement confirm reaction"
+        let reactions = 
+            unconfirmed.UncheckedReactions
+            |> List.choose (
+                Reactions.toReaction globalState (unconfirmed.Creature, unconfirmed.Outcome))
+        match reactions with
+        | [] -> 
+            ExecuteReaction (unconfirmed.Creature, unconfirmed.Outcome) 
+            |> execute (globalState, machine)
+        | (triggered, reaction) :: tl ->
+            let reactionNeeded = {
+                ReactionNeeded.Creature = triggered
+                Alternatives = [ 
+                    Reactions.Reaction(reaction)
+                    Pass 
+                    ] 
+                    }
+            let pending = 
+                match machine with 
+                | CombatFinished -> failwith "Not possible"
+                | Machine.ActionNeeded _ -> failwith "Not possible"
+                | Machine.ReactionNeeded (_, pending) -> pending
+            let machine = 
+                Machine.ReactionNeeded(
+                    reactionNeeded, 
+                    WaitingForConfirmation.Reaction(unconfirmed, pending)
+                    )
+            ReactionTriggered(triggered, reaction)
+            |> execute (globalState, machine)  
 
     | ExecuteReaction (creature, outcome) ->
         
@@ -390,6 +422,7 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
         | Machine.ReactionNeeded (reaction, pending) -> 
             match pending with
             | WaitingForConfirmation.Action unconfirmed ->
+                // TODO check if other conditions cancel the original Action
                 if globalState.CreatureState.[unconfirmed.Creature].HitPoints > 0
                 then 
                     ConfirmAction unconfirmed 
@@ -397,7 +430,17 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
                 else 
                     ActionCancelled 
                     |> execute (globalState, machine)
-            | WaitingForConfirmation.Reaction (unconfirmed, pending) -> failwith "TODO"
+            | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
+                let fakeReaction =  { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
+                let machine = Machine.ReactionNeeded (fakeReaction, pending)
+                // TODO check if other conditions cancel the original reaction
+                if globalState.CreatureState.[unconfirmed.Creature].HitPoints > 0
+                then 
+                    ConfirmReaction unconfirmed 
+                    |> execute (globalState, machine)
+                else 
+                    ReactionCancelled unconfirmed.Creature
+                    |> execute (globalState, machine)
 
     | PassReaction creature ->
         let pending = 
@@ -413,12 +456,59 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
                     UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
                 }
             ConfirmAction unconfirmed
+            |> execute (globalState, machine)            
+        | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
+            let unconfirmed = 
+                { unconfirmed with
+                    CheckedReactions = creature :: unconfirmed.CheckedReactions
+                    UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
+                }
+            let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
+            let machine = Machine.ReactionNeeded (fakeReaction, pending)
+            ConfirmReaction unconfirmed
             |> execute (globalState, machine)
-            // TODO attempt action again, with new updated context
-            //failwith "TODO handle confirmed action / passed reaction"
-        | WaitingForConfirmation.Reaction (_, unconfirmed) -> 
-            failwith "TODO handle confirmed action / passed reaction"
-    // failwith "TODO"
+
+    | ReactionCancelled creature -> 
+        // identical to PassReaction,
+        // but mark reaction as taken
+        let pending = 
+            match machine with
+            | CombatFinished -> failwith "Impossible state"
+            | ActionNeeded _ -> failwith "Impossible state"
+            | ReactionNeeded (_, pending) -> pending
+
+        let creatureState = 
+            { globalState.CreatureState.[creature] with 
+                HasTakenReaction = true 
+            }
+        let globalState = 
+            { globalState with 
+                CreatureState = 
+                    globalState.CreatureState 
+                    |> Map.add creature creatureState
+            }
+
+        match pending with 
+        | WaitingForConfirmation.Action unconfirmed -> 
+            let unconfirmed = 
+                { unconfirmed with
+                    CheckedReactions = creature :: unconfirmed.CheckedReactions
+                    UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
+                }
+            ConfirmAction unconfirmed
+            |> execute (globalState, machine)            
+        | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
+            let unconfirmed = 
+                { unconfirmed with
+                    CheckedReactions = creature :: unconfirmed.CheckedReactions
+                    UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
+                }
+            let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
+            let machine = Machine.ReactionNeeded (fakeReaction, pending)
+            ConfirmReaction unconfirmed
+            |> execute (globalState, machine)
+
+
 
 let update (globalState: GlobalState, machine: Machine) (msg: Msg) = 
     
@@ -442,7 +532,7 @@ let update (globalState: GlobalState, machine: Machine) (msg: Msg) =
             | Machine.ActionNeeded _ -> InvalidCommand "Expecting an action, not a reaction"
             | Machine.ReactionNeeded (reactionNeeded, pending) ->
                 if (not (reactionNeeded.Alternatives |> List.contains reaction))
-                then InvalidCommand "Unexpected action"
+                then InvalidCommand "Unexpected reaction"
                 else 
                     match reaction with 
                     | Pass -> Transition.PassReaction creature
@@ -460,6 +550,12 @@ let state3 = update state2 (CreatureAction((CreatureID 1), Actions.Action(Action
 
 let state4 = update state3 (CreatureReaction((CreatureID 2), Reactions.Reaction(OpportunityAttack (CreatureID 1))))
 
-let state5 = update state4 (CreatureReaction((CreatureID 3), Reactions.Reaction(OpportunityAttack (CreatureID 1))))
+let state5 = update state4 (CreatureReaction((CreatureID 1), Reactions.Reaction(Riposte (CreatureID 2))))
 
-let state6 = update state5 (CreatureAction((CreatureID 1), Actions.Action(Action.Move)))
+let state5 = update state4 (CreatureReaction((CreatureID 1), Reactions.Pass))
+
+let state6 = update state5 (CreatureReaction((CreatureID 3), Reactions.Reaction(OpportunityAttack (CreatureID 1))))
+
+let state6 = update state5 (CreatureReaction((CreatureID 3), Reactions.Pass))
+
+let state7 = update state6 (CreatureAction((CreatureID 1), Actions.Action(Action.Move)))
