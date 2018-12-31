@@ -139,16 +139,16 @@ type Machine =
     | ReactionNeeded of ReactionNeeded * WaitingForConfirmation
     with 
     static member Reacting machine =
+        let rec reacting acc pending = 
+            match pending with 
+            | WaitingForConfirmation.Action _ -> acc
+            | WaitingForConfirmation.Reaction (reaction, rest) -> 
+                let acc = reaction.Creature :: acc
+                reacting acc rest        
         match machine with 
         | CombatFinished -> []
         | ActionNeeded _ -> []
         | ReactionNeeded(reaction, pending) ->
-            let rec reacting acc pending = 
-                match pending with 
-                | WaitingForConfirmation.Action _ -> acc
-                | WaitingForConfirmation.Reaction (reaction, rest) -> 
-                    let acc = reaction.Creature :: acc
-                    reacting acc rest
             reacting [ reaction.Creature ] pending 
 
 type Msg = 
@@ -220,8 +220,18 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
             Creature = nextCreatureUp
             MovementLeft = 30                
             HasTakenAction = false
+            }        
+        let nextCreatureState = 
+            { globalState.CreatureState.[nextCreatureUp] with
+                HasTakenReaction = false
             }
-        let globalState = { globalState with TurnState = Some nextTurn }
+        let globalState = 
+            { globalState with 
+                TurnState = Some nextTurn 
+                CreatureState = 
+                    globalState.CreatureState
+                    |> Map.add nextCreatureUp nextCreatureState
+            }
         let alternatives = Actions.alternatives globalState
         match alternatives with
         | None -> FinishTurn nextCreatureUp |> execute (globalState, machine)
