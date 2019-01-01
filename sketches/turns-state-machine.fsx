@@ -192,17 +192,26 @@ type ReactionNeeded = {
     Alternatives: list<ReactionTaken>
     }
 
+type ReactionsChecked = {
+    Unchecked: list<CreatureID>
+    Checked: list<CreatureID>
+    }
+    with
+    static member check creatureID checks = 
+        { checks with
+            Unchecked = checks.Unchecked |> List.filter (fun x -> x <> creatureID)
+            Checked = creatureID :: checks.Checked
+        } 
+
 type UnconfirmedActionResult = {
-    UncheckedReactions: list<CreatureID>
-    CheckedReactions: list<CreatureID>
+    ReactionsChecked: ReactionsChecked
     Creature: CreatureID
     Action: Action
     Outcome: Outcome
     }
 
 type UnconfirmedReactionResult = {
-    UncheckedReactions: list<CreatureID>
-    CheckedReactions: list<CreatureID>
+    ReactionsChecked: ReactionsChecked
     Creature: CreatureID
     Reaction: Reaction
     Outcome: Outcome
@@ -337,8 +346,10 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
             |> execute (globalState, machine)
         | _ ->
             let unconfirmed : UnconfirmedActionResult = {
-                UncheckedReactions = globalState.Initiative
-                CheckedReactions = []
+                ReactionsChecked = { 
+                    Unchecked = globalState.Initiative
+                    Checked = []
+                    }
                 Creature = creature
                 Action = action
                 Outcome = outcome
@@ -348,7 +359,7 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
 
     | ConfirmAction unconfirmed ->
         let reactions = 
-            unconfirmed.UncheckedReactions
+            unconfirmed.ReactionsChecked.Unchecked
             |> List.choose (
                 Reactions.toAction globalState (unconfirmed.Creature, unconfirmed.Outcome))
         match reactions with
@@ -426,8 +437,10 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
             |> execute (globalState, machine)
         | _ ->
             let unconfirmed : UnconfirmedReactionResult = {
-                UncheckedReactions = notReacting
-                CheckedReactions = alreadyReacting
+                ReactionsChecked = {
+                    Unchecked = notReacting
+                    Checked = alreadyReacting
+                }
                 Creature = creature
                 Reaction = reaction
                 Outcome = outcome
@@ -437,7 +450,7 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
 
     | ConfirmReaction unconfirmed ->
         let reactions = 
-            unconfirmed.UncheckedReactions
+            unconfirmed.ReactionsChecked.Unchecked
             |> List.choose (
                 Reactions.toReaction globalState (unconfirmed.Creature, unconfirmed.Outcome))
         match reactions with
@@ -514,16 +527,18 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
         | WaitingForConfirmation.Action unconfirmed -> 
             let unconfirmed = 
                 { unconfirmed with
-                    CheckedReactions = creature :: unconfirmed.CheckedReactions
-                    UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
+                    ReactionsChecked = 
+                        unconfirmed.ReactionsChecked 
+                        |> ReactionsChecked.check creature 
                 }
             ConfirmAction unconfirmed
-            |> execute (globalState, machine)            
+            |> execute (globalState, machine)                       
         | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
             let unconfirmed = 
                 { unconfirmed with
-                    CheckedReactions = creature :: unconfirmed.CheckedReactions
-                    UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
+                    ReactionsChecked = 
+                        unconfirmed.ReactionsChecked 
+                        |> ReactionsChecked.check creature 
                 }
             let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
             let machine = Machine.ReactionNeeded (fakeReaction, pending)
@@ -554,23 +569,23 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
         | WaitingForConfirmation.Action unconfirmed -> 
             let unconfirmed = 
                 { unconfirmed with
-                    CheckedReactions = creature :: unconfirmed.CheckedReactions
-                    UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
+                    ReactionsChecked = 
+                        unconfirmed.ReactionsChecked 
+                        |> ReactionsChecked.check creature 
                 }
             ConfirmAction unconfirmed
             |> execute (globalState, machine)            
         | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
             let unconfirmed = 
                 { unconfirmed with
-                    CheckedReactions = creature :: unconfirmed.CheckedReactions
-                    UncheckedReactions = unconfirmed.UncheckedReactions |> List.filter (fun x -> x <> creature)
+                    ReactionsChecked = 
+                        unconfirmed.ReactionsChecked 
+                        |> ReactionsChecked.check creature 
                 }
             let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
             let machine = Machine.ReactionNeeded (fakeReaction, pending)
             ConfirmReaction unconfirmed
             |> execute (globalState, machine)
-
-
 
 let update (globalState: GlobalState, machine: Machine) (msg: Msg) = 
     
