@@ -161,7 +161,7 @@ module Reactions =
         then None
         else
             match outcome with
-            | Move _ -> Some(creature, OpportunityAttack trigger)
+            | Move _ -> Some(creature, [ OpportunityAttack trigger ])
             | SuccessfulAttack _ -> None 
             | FailedAttack _ -> None
 
@@ -175,7 +175,7 @@ module Reactions =
             | Move _ -> None
             | SuccessfulAttack (origin, target, _) -> 
                 if creature = target 
-                then Some (creature, Riposte origin)
+                then Some (creature, [ Riposte origin ])
                 else None 
             | FailedAttack _ -> None
 
@@ -274,7 +274,7 @@ type Transition =
     | ExecuteAction of (CreatureID * Outcome)
     | ActionCompleted
     | ActionCancelled
-    | ReactionTriggered of (CreatureID * Reactions.Reaction)
+    | ReactionTriggered of (CreatureID * ReactionNeeded)
     | AttemptReaction of (CreatureID * Reactions.Reaction)
     | ConfirmReaction of UnconfirmedReactionResult
     | ReactionCompleted
@@ -355,20 +355,20 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
         | [] -> 
             ExecuteAction (unconfirmed.Creature, unconfirmed.Outcome) 
             |> execute (globalState, machine)
-        | (triggered, reaction) :: tl ->
+        | (triggered, reactions) :: _ ->
             let reactionNeeded = {
                 ReactionNeeded.Creature = triggered
-                Alternatives = [ 
-                    Reactions.Reaction(OpportunityAttack(unconfirmed.Creature))
-                    Pass 
-                    ] 
+                Alternatives = 
+                    ReactionTaken.Pass ::
+                    (reactions
+                    |> List.map ReactionTaken.Reaction)                   
                     }
             let machine = 
                 Machine.ReactionNeeded(
                     reactionNeeded, 
                     WaitingForConfirmation.Action(unconfirmed)
                     )
-            ReactionTriggered(triggered, reaction)
+            ReactionTriggered(triggered, reactionNeeded)
             |> execute (globalState, machine)  
 
     | ExecuteAction (creature, outcome) ->
@@ -399,7 +399,7 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
                         ActionNeeded({ Creature = turn.Creature; Alternatives = alternatives })
                     globalState, machine 
 
-    | ReactionTriggered(creature, reaction) -> 
+    | ReactionTriggered (creature, reactionNeeded) -> 
         globalState, machine
 
     | AttemptReaction (creature, reaction) ->
@@ -444,14 +444,15 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
         | [] -> 
             ExecuteReaction (unconfirmed.Creature, unconfirmed.Outcome) 
             |> execute (globalState, machine)
-        | (triggered, reaction) :: tl ->
+        | (triggered, reactions) :: _ ->
             let reactionNeeded = {
                 ReactionNeeded.Creature = triggered
-                Alternatives = [ 
-                    Reactions.Reaction(reaction)
-                    Pass 
-                    ] 
+                Alternatives = 
+                    ReactionTaken.Pass ::
+                    (reactions
+                    |> List.map ReactionTaken.Reaction)                   
                     }
+                   
             let pending = 
                 match machine with 
                 | CombatFinished _ -> failwith "Not possible"
@@ -462,7 +463,7 @@ let rec execute (globalState: GlobalState, machine: Machine) (transition: Transi
                     reactionNeeded, 
                     WaitingForConfirmation.Reaction(unconfirmed, pending)
                     )
-            ReactionTriggered(triggered, reaction)
+            ReactionTriggered(triggered, reactionNeeded)
             |> execute (globalState, machine)  
 
     | ExecuteReaction (creature, outcome) ->        
