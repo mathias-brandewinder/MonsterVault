@@ -354,31 +354,49 @@ module Attacks =
 
 module Domain =
 
-    open DiceRolls
     open Space
 
     type CreatureID = | CreatureID of int
-    
-    type Action = 
-        | Dash
-        | Attack of Attacks.Statistics * CreatureID
+    type GroupID = | GroupID of int
+
+    type CombatOutcome = 
+        | Draw 
+        | Victory of GroupID 
+
+    type CombatState = 
+        | Ongoing 
+        | Finished of CombatOutcome
+
+    type TurnState = {
+        Creature: CreatureID
+        MovementLeft: int<ft>
+        HasTakenAction: bool
+        }
 
     [<RequireQualifiedAccess>]
     module Creature = 
 
         type State = {
-            MovementLeft: int<ft>
-            HitPointsLeft: int
+            HasTakenReaction: bool
+            HitPoints: int
             Position: Position
-            ActionTaken: Action option
+            Dead: bool
+            Group: GroupID
             }
+            with 
+            member this.CanAct =
+                not (this.Dead)
+            member this.CanReact =
+                this.CanAct && (not this.HasTakenReaction)   
+
         
-        let initialize (stats: Creature.Statistics, pos: Position) =
+        let initialize (stats: Creature.Statistics, group: GroupID, pos: Position) =
             {
-                MovementLeft = stats.Movement
-                HitPointsLeft = stats.HitPoints
+                HitPoints = stats.HitPoints
+                Group = group
                 Position = pos
-                ActionTaken = None
+                HasTakenReaction = false
+                Dead = false
             }
 
     type BattleMap = {
@@ -386,287 +404,567 @@ module Domain =
         Height: int
         }
 
-    type World = {
+    type GlobalState = {
         BattleMap: BattleMap
         Initiative: CreatureID list
-        Active: CreatureID
-        Creatures: Map<CreatureID, Creature.State>
+        TurnState: Option<TurnState>
+        CreatureState: Map<CreatureID, Creature.State>
         Statistics: Map<CreatureID, Creature.Statistics>
         }
         with
-        static member Initialize(map: BattleMap, creatures: (CreatureID * Creature.Statistics * Position) list) =
+        static member Initialize(map: BattleMap, creatures: (CreatureID * GroupID * Creature.Statistics * Position) list) =
             let initiative = 
                 creatures 
-                |> List.map (fun (creatureID, _, _) -> creatureID)
+                |> List.map (fun (creatureID, _, _, _) -> creatureID)
+            let turn = 
+                match creatures with 
+                | [] -> None
+                | (creature, _, stats, _) :: _ ->
+                    {
+                        Creature = creature 
+                        MovementLeft = stats.Movement
+                        HasTakenAction = false
+                    }
+                    |> Some
             {
                 BattleMap = map
                 Initiative = initiative
-                Active = initiative |> List.head
-                Creatures = 
+                TurnState = turn
+                CreatureState = 
                     creatures 
-                    |> List.map (fun (creatureId, stats, pos) -> 
+                    |> List.map (fun (creatureId, group, stats, pos) -> 
                         creatureId,
-                        Creature.initialize (stats, pos)
+                        Creature.initialize (stats, group, pos)
                         ) 
                     |> Map.ofList 
                 Statistics = 
                     creatures 
-                    |> List.map (fun (creatureId, stats, _) -> 
+                    |> List.map (fun (creatureId, _, stats, _) -> 
                         creatureId,
                         stats
                         ) 
                     |> Map.ofList 
             }
-
-    type Command = 
-        | Move of Direction
-        | Action of Action
-        | Done
-
-    module Rules = 
-
-        type Rule = 
-            abstract member Validate: 
-                World -> CreatureID * Command -> Result<CreatureID * Command, string>
-
-        let errorMessage (creatureID, command) message =
-            sprintf "%A / %A failed: %s" command creatureID message
-
-        let ``A creature must be active to act`` =
-            { new Rule with
-                member this.Validate world (creatureID, command) =
-                    if world.Active <> creatureID
-                    then 
-                        "it is not the creature's turn"
-                        |> errorMessage (creatureID, command) 
-                        |> Error
-                    else Ok (creatureID, command)
-            }
-
-        let ``A creature cannot move if it has not enough movement left`` =
-            { new Rule with
-                member this.Validate world (creatureID, command) =
-                    let currentState = world.Creatures.[creatureID]
-                    match command with
-                    | Move(_) ->
-                        let movementLeft = currentState.MovementLeft
-                        if movementLeft < cellSize
-                        then
-                            "creature does not have enough movement left"
-                            |> errorMessage (creatureID, command) 
-                            |> Error
-                        else Ok (creatureID, command)
-                    | _ -> Ok (creatureID, command)
-            }
-
-        let ``A creature cannot move to a space occupied by another creature`` =
-            { new Rule with
-                member this.Validate world (creatureID, command) =
-                    let currentState = world.Creatures.[creatureID]
-                    match command with
-                    | Move(direction) ->
-                        let destination = 
-                            currentState.Position 
-                            |> move direction
-                        if world.Creatures |> Map.exists (fun ID state -> ID <> creatureID && state.Position = destination)
-                        then
-                            "cannot move into the space of another creature"
-                            |> errorMessage (creatureID, command) 
-                            |> Error
-                        else Ok (creatureID, command)
-                    | _ -> Ok (creatureID, command)
-            }
-
-        let ``A creature can take at most one action per turn`` =
-            { new Rule with
-                member this.Validate world (creatureID, command) =
-                    let currentState = world.Creatures.[creatureID]
-                    match command with
-                    | Action(_) ->
-                        match currentState.ActionTaken with
-                        | Some(_) -> 
-                            "creature has already taken one action this turn"
-                            |> errorMessage (creatureID, command) 
-                            |> Error
-                        | None -> Ok (creatureID, command)
-                    | _ -> Ok (creatureID, command)
-            }
-
-        let ``A creature can only attack within weapon range`` =
-            { new Rule with
-                member this.Validate world (creatureID, command) =
-                    let currentState = world.Creatures.[creatureID]
-                    match command with
-                    | Action(action) ->
-                        match action with
-                        | Attack (weapon, targetID) ->
-                            let target = world.Creatures.[targetID]
-                            let dist = distance currentState.Position target.Position
-                            let maximumDistance = 
-                                match weapon.Reach with
-                                | Attacks.Reach.Melee (reach) -> reach
-                                | Attacks.Reach.Ranged (range) -> range.Long
-                            if dist <= maximumDistance
-                            then Ok (creatureID, command)
-                            else 
-                                sprintf "maximum range for attack is %i" dist
-                                |> errorMessage (creatureID, command) 
-                                |> Error
-                        | _ -> Ok (creatureID, command)
-                    | _ -> Ok (creatureID, command)
-            }
-
-        let rules = [
-            ``A creature must be active to act``
-            ``A creature cannot move if it has not enough movement left``
-            ``A creature cannot move to a space occupied by another creature``
-            ``A creature can take at most one action per turn``
-            ``A creature can only attack within weapon range``
-            ]
-
-        let validate world (creatureID, command) =
-            (Ok (creatureID, command), rules)
-            ||> Seq.fold (fun state rule -> 
-                state
-                |> Result.bind (rule.Validate world)
-                )
-    
-    let alternatives (world: World) =
-
-        let creatureID = world.Active
-        let creature = world.Statistics.[creatureID]
-        let movements = 
-            [ N; NW; W; SW; S; SE; E; NE ] 
-            |> List.map Move
-        let standardActions = 
-            [ Dash ] 
-            |> List.map Action
-        let attacks = 
-            world.Statistics.[creatureID].Attacks
-            |> Seq.collect (fun weapon -> Attacks.using weapon creature)
-            |> Seq.collect (fun attack -> 
-                world.Initiative
-                |> Seq.filter (fun targetID -> targetID <> creatureID)
-                |> Seq.map (fun targetID ->                   
-                    Attack(attack, targetID) 
-                    |> Action
-                    )
-                )
-            |> Seq.toList
-
-        let miscellaneous = [ Done ]
-
-        movements @ standardActions @ miscellaneous @ attacks
-        |> List.map (fun action -> Rules.validate world (creatureID, action))
-        |> List.filter (
-            function 
-            | Ok(_) -> true 
-            | Error(_) -> false)
-        |> List.map (
-            function 
-            | Ok(command) -> command
-            | Error(_) -> failwith "Impossible"
-            )
-
-    let update (world: World) (creatureID: CreatureID, cmd: Command) = 
-        
-        let currentState = world.Creatures.[creatureID]
-        match cmd with
-        | Move(direction) ->
-            let destination = 
-                currentState.Position 
-                |> move direction
-            let updatedState = 
-                { currentState with 
-                    Position = destination 
-                    MovementLeft = currentState.MovementLeft - cellSize
+        static member CombatState state = 
+            match state.Initiative with 
+            | [] -> Finished Draw
+            | _ ->
+                let activeGroups = 
+                    state.CreatureState 
+                    |> Map.filter (fun key value -> value.CanAct)
+                    |> Seq.map (fun kv -> kv.Value.Group)
+                    |> Seq.distinct
+                    |> Seq.toList
+                match activeGroups with
+                | [] -> Finished Draw 
+                | [ winner ] -> Finished (Victory winner)
+                | _ -> Ongoing
+                
+    type Outcome =
+        | Move of CreatureID * Direction
+        | SuccessfulAttack of CreatureID * CreatureID * int
+        | FailedAttack of CreatureID * CreatureID
+        with 
+        static member applyEffect (outcome: Outcome) (state: GlobalState) =
+            match outcome with
+            | Outcome.Move (creature, direction) ->                  
+                let currentTurn = state.TurnState.Value
+                let currentState = state.CreatureState.[creature]
+                let updatedState = { currentState with Position = currentState.Position |> move direction }
+                { state with
+                    CreatureState = state.CreatureState |> Map.add creature updatedState 
+                    TurnState = 
+                        { currentTurn with 
+                            MovementLeft = currentTurn.MovementLeft - 5<ft> 
+                        }
+                        |> Some
                 }
-            { world with
-                Creatures = 
-                    world.Creatures 
-                    |> Map.add creatureID updatedState
-            }
-        | Action(action) ->
-            match action with
-            | Dash ->
-                let creatureStats = world.Statistics.[creatureID]
-                let creatureState = 
-                    { currentState with 
-                        MovementLeft = currentState.MovementLeft + creatureStats.Movement
-                        ActionTaken = Some Dash
+            | Outcome.FailedAttack _ -> state
+            | Outcome.SuccessfulAttack (_, target, damage) -> 
+                // TODO: handle dying state, instant death
+                let targetState = state.CreatureState.[target]
+                let hitPoints = max 0 targetState.HitPoints - damage
+                let updatedState = 
+                    { targetState with
+                        HitPoints = hitPoints 
+                        Dead = hitPoints <= 0
                     }
-                { world with
-                    Creatures = 
-                        world.Creatures 
-                        |> Map.add creatureID creatureState
+                { state with
+                    CreatureState =
+                        state.CreatureState
+                        |> Map.add target updatedState
                 }
-            | Attack(attack, targetID) ->
-                let creatureStats = world.Statistics.[creatureID]
-                let targetState =
-                    let targetState = world.Creatures.[targetID]
-                    let dist = distance currentState.Position targetState.Position
-                    let attackRoll = 
-                        match attack.Reach with
-                        | Attacks.Reach.Ranged(range) ->
-                            if dist <= range.Short
-                            then  1 * d20 |> Roll.roll
-                            else  (1 * d20, Disadvantage) |> Roll.roll
-                        | Attacks.Reach.Melee(_) -> 
-                            1 * d20 |> Roll.roll
-                    let target = world.Statistics.[targetID]
-                    let targetAC = target.ArmorClass
-                    let damage = 
-                        if attackRoll = 1
-                        then 0
-                        elif attackRoll = 20
+        static member updateAction (outcome: Outcome) (state: GlobalState) =
+            match outcome with
+            | Outcome.Move _ -> state         
+            | Outcome.FailedAttack _ -> 
+                { state with 
+                    TurnState = Some { state.TurnState.Value with HasTakenAction = true } 
+                }
+            | Outcome.SuccessfulAttack _ -> 
+                { state with 
+                    TurnState = Some { state.TurnState.Value with HasTakenAction = true } 
+                }
+        static member updateReaction (outcome: Outcome) (state: GlobalState) =
+            match outcome with
+            | Outcome.Move _ -> failwith "Error: move is not a possible reaction"
+            | Outcome.FailedAttack (source, target) -> 
+                let attackerState = state.CreatureState.[source]
+                { state with 
+                    CreatureState = 
+                        state.CreatureState
+                        |> Map.add source { attackerState with HasTakenReaction = true } 
+                }
+            | Outcome.SuccessfulAttack (source, target, damage) -> 
+                let attackerState = state.CreatureState.[source]
+                { state with 
+                    CreatureState = 
+                        state.CreatureState
+                        |> Map.add source { attackerState with HasTakenReaction = true } 
+                }
+
+    module Actions = 
+
+        type Action =
+            | Move of Direction
+            | Attack of CreatureID
+
+        type ActionTaken =
+            | FinishTurn 
+            | Action of Action
+
+        let alternatives (state: GlobalState) =
+            state.TurnState
+            |> Option.bind (fun turn ->
+                let creature = turn.Creature
+                if state.CreatureState.[creature].CanAct
+                then 
+                    [           
+                        if turn.MovementLeft >= 5<ft>
                         then 
-                            Add [ attack.Damage; attack.Damage ]
-                            |> Roll.roll
-                        else
-                            if attackRoll < targetAC
-                            then 0
-                            else attack.Damage |> Roll.roll
-                    { targetState with 
-                        HitPointsLeft = targetState.HitPointsLeft - damage 
+                            yield! 
+                                [ N; NW; W; SW; S; SE; E; NE ]
+                                |> List.map (fun dir -> Action(Move(dir))) 
+                        if (not turn.HasTakenAction)
+                        then                        
+                            yield! 
+                                state.Initiative
+                                |> List.filter (fun target -> target <> creature)
+                                |> List.filter (fun target -> not (state.CreatureState.[target].Dead))
+                                |> List.map (fun target -> Action(Attack target))
+                        yield FinishTurn
+                    ]
+                    |> Some
+                else None
+                )
+
+    module Reactions = 
+
+        type Reaction =
+            | OpportunityAttack of CreatureID
+            | Riposte of CreatureID
+
+        type ReactionTaken = 
+            | Pass 
+            | Reaction of Reaction
+
+        let toAction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+            if creature = trigger
+            then None
+            elif (not globalState.CreatureState.[creature].CanReact)
+            then None
+            else
+                match outcome with
+                | Move _ -> Some(creature, [ OpportunityAttack trigger ])
+                | SuccessfulAttack _ -> None 
+                | FailedAttack _ -> None
+
+        let toReaction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+            if creature = trigger
+            then None
+            elif (not globalState.CreatureState.[creature].CanReact)
+            then None
+            else
+                match outcome with
+                | Move _ -> None
+                | SuccessfulAttack (origin, target, _) -> 
+                    if creature = target 
+                    then Some (creature, [ Riposte origin ])
+                    else None 
+                | FailedAttack _ -> None
+
+    open Actions 
+    open Reactions 
+
+    type ActionNeeded = {
+        Creature: CreatureID
+        Alternatives: list<ActionTaken>
+        }
+
+    type ReactionNeeded = {
+        Creature: CreatureID
+        Alternatives: list<ReactionTaken>
+        }
+
+    type ReactionsChecked = {
+        Unchecked: list<CreatureID>
+        Checked: list<CreatureID>
+        }
+        with
+        static member check creatureID checks = 
+            { checks with
+                Unchecked = checks.Unchecked |> List.filter (fun x -> x <> creatureID)
+                Checked = creatureID :: checks.Checked
+            } 
+
+    type UnconfirmedActionResult = {
+        ReactionsChecked: ReactionsChecked
+        Creature: CreatureID
+        Action: Action
+        Outcome: Outcome
+        }
+
+    type UnconfirmedReactionResult = {
+        ReactionsChecked: ReactionsChecked
+        Creature: CreatureID
+        Reaction: Reaction
+        Outcome: Outcome
+        }
+
+    type WaitingForConfirmation = 
+        | Action of UnconfirmedActionResult
+        | Reaction of UnconfirmedReactionResult * WaitingForConfirmation
+
+    type Machine = 
+        | CombatFinished of CombatOutcome
+        | ActionNeeded of ActionNeeded
+        | ReactionNeeded of ReactionNeeded * WaitingForConfirmation
+        with 
+        static member Reacting machine =
+            let rec reacting acc pending = 
+                match pending with 
+                | WaitingForConfirmation.Action _ -> acc
+                | WaitingForConfirmation.Reaction (reaction, rest) -> 
+                    let acc = reaction.Creature :: acc
+                    reacting acc rest        
+            match machine with 
+            | CombatFinished _ -> []
+            | ActionNeeded _ -> []
+            | ReactionNeeded(reaction, pending) ->
+                reacting [ reaction.Creature ] pending 
+
+    type Transition = 
+        | InvalidCommand of string
+        | StartCombat of (unit -> GlobalState * Machine)
+        | FinishTurn of CreatureID
+        | AttemptAction of (CreatureID * Actions.Action)
+        | ConfirmAction of UnconfirmedActionResult
+        | ExecuteAction of (CreatureID * Outcome)
+        | ActionCompleted
+        | ActionCancelled
+        | ReactionTriggered of (CreatureID * ReactionNeeded)
+        | AttemptReaction of (CreatureID * Reactions.Reaction)
+        | ConfirmReaction of UnconfirmedReactionResult
+        | ReactionCompleted
+        | ReactionCancelled of CreatureID
+        | ExecuteReaction of (CreatureID * Outcome)
+        | PassReaction of CreatureID
+
+    let rec execute (globalState: GlobalState, machine: Machine) (transition: Transition) : (GlobalState * Machine) =
+        printfn "%A" transition
+        match transition with
+        | InvalidCommand _ -> globalState, machine
+        | StartCombat init -> init ()
+        | FinishTurn creature ->
+            match (GlobalState.CombatState globalState) with 
+            | Finished result -> globalState, Machine.CombatFinished result
+            | Ongoing -> 
+                let turn = globalState.TurnState.Value
+                let nextCreatureUp = 
+                    globalState.Initiative 
+                    |> List.findIndex (fun x -> x = turn.Creature)
+                    |> fun index -> (index + 1) % (globalState.Initiative.Length)
+                    |> fun index -> globalState.Initiative.Item index
+                let nextTurn = {
+                    Creature = nextCreatureUp
+                    MovementLeft = 30<ft>                
+                    HasTakenAction = false
+                    }        
+                let nextCreatureState = 
+                    { globalState.CreatureState.[nextCreatureUp] with
+                        HasTakenReaction = false
                     }
-
-                let creatureState = 
-                    { currentState with 
-                        ActionTaken = Some (Attack(attack, targetID))
+                let globalState = 
+                    { globalState with 
+                        TurnState = Some nextTurn 
+                        CreatureState = 
+                            globalState.CreatureState
+                            |> Map.add nextCreatureUp nextCreatureState
                     }
+                let alternatives = Actions.alternatives globalState
+                match alternatives with
+                | None -> FinishTurn nextCreatureUp |> execute (globalState, machine)
+                | Some alternatives ->
+                    globalState, 
+                    ActionNeeded({ Creature = nextCreatureUp; Alternatives = alternatives })
 
-                { world with
-                    Creatures = 
-                        world.Creatures 
-                        |> Map.add creatureID creatureState
-                        |> Map.add targetID targetState
-                }
-        | Done ->
-            let activeIndex = 
-                world.Initiative 
-                |> List.findIndex (fun id -> id = creatureID)
-            let nextUp = (activeIndex + 1) % world.Initiative.Length
-            let nextActiveID = world.Initiative.Item nextUp
-            let nextActiveStats = world.Statistics.[nextActiveID]
-            let nextActiveState = 
-                { world.Creatures.[nextActiveID] with
-                    MovementLeft = nextActiveStats.Movement
-                    ActionTaken = None
-                }
-            { world with 
-                Active = nextActiveID
-                Creatures = 
-                    world.Creatures 
-                    |> Map.add nextActiveID nextActiveState  
-            }
+        | AttemptAction (creature, action) -> 
+            let outcome = 
+                match action with
+                | Action.Move dir -> Outcome.Move (creature, dir)
+                | Attack target -> 
+                    // TODO properly handle attack resolution
+                    Outcome.SuccessfulAttack (creature, target, 1)
+            let reactions = 
+                globalState.Initiative
+                |> List.choose (
+                    Reactions.toAction globalState (creature, outcome))
+            match reactions with
+            | [] -> 
+                ExecuteAction (creature, outcome) 
+                |> execute (globalState, machine)
+            | _ ->
+                let unconfirmed : UnconfirmedActionResult = {
+                    ReactionsChecked = { 
+                        Unchecked = globalState.Initiative
+                        Checked = []
+                        }
+                    Creature = creature
+                    Action = action
+                    Outcome = outcome
+                    }
+                ConfirmAction unconfirmed
+                |> execute (globalState, machine)
 
-    let apply (creatureID, command) world =
-        match Rules.validate world (creatureID, command) with
-        | Error(msg) ->
-            printfn "%s" msg
-            world  
-        | Ok(creatureID, command) -> 
-            update world (creatureID, command)
+        | ConfirmAction unconfirmed ->
+            let reactions = 
+                unconfirmed.ReactionsChecked.Unchecked
+                |> List.choose (
+                    Reactions.toAction globalState (unconfirmed.Creature, unconfirmed.Outcome))
+            match reactions with
+            | [] -> 
+                ExecuteAction (unconfirmed.Creature, unconfirmed.Outcome) 
+                |> execute (globalState, machine)
+            | (triggered, reactions) :: _ ->
+                let reactionNeeded = {
+                    ReactionNeeded.Creature = triggered
+                    Alternatives = 
+                        ReactionTaken.Pass ::
+                        (reactions
+                        |> List.map ReactionTaken.Reaction)                   
+                        }
+                let machine = 
+                    Machine.ReactionNeeded(
+                        reactionNeeded, 
+                        WaitingForConfirmation.Action(unconfirmed)
+                        )
+                ReactionTriggered(triggered, reactionNeeded)
+                |> execute (globalState, machine)  
+
+        | ExecuteAction (creature, outcome) ->
+            let state = 
+                globalState
+                |> Outcome.updateAction outcome
+                |> Outcome.applyEffect outcome 
+            ActionCompleted |> execute (state, machine)   
+
+        | ActionCancelled ->
+            let currentTurn = globalState.TurnState.Value
+            FinishTurn currentTurn.Creature 
+            |> execute (globalState, machine)
+
+        | ActionCompleted ->
+            match (GlobalState.CombatState globalState) with 
+            | Finished result -> globalState, Machine.CombatFinished result
+            | Ongoing -> 
+                match globalState.TurnState with 
+                | None -> failwith "Impossible: when an action completes, there must be a turn"
+                | Some turn ->
+                    match Actions.alternatives globalState with 
+                    | None -> 
+                        FinishTurn turn.Creature 
+                        |> execute (globalState, machine)
+                    | Some alternatives ->
+                        let machine = 
+                            ActionNeeded({ Creature = turn.Creature; Alternatives = alternatives })
+                        globalState, machine 
+
+        | ReactionTriggered (creature, reactionNeeded) -> 
+            globalState, machine
+
+        | AttemptReaction (creature, reaction) ->
+            let outcome = 
+                match reaction with
+                | Reaction.OpportunityAttack target -> 
+                    // TODO properly handle attack resolution
+                    Outcome.SuccessfulAttack (creature, target, 1)
+                | Reaction.Riposte target -> 
+                    // TODO properly handle riposte / attack resolution
+                    Outcome.SuccessfulAttack (creature, target, 1) 
+            let alreadyReacting = machine |> Machine.Reacting
+            let notReacting = 
+                globalState.Initiative 
+                |> List.filter (fun x -> not (alreadyReacting |> List.contains x))     
+            let reactions = 
+                notReacting
+                |> List.choose (
+                    Reactions.toReaction globalState (creature, outcome))
+
+            match reactions with
+            | [] -> 
+                ExecuteReaction (creature, outcome) 
+                |> execute (globalState, machine)
+            | _ ->
+                let unconfirmed : UnconfirmedReactionResult = {
+                    ReactionsChecked = {
+                        Unchecked = notReacting
+                        Checked = alreadyReacting
+                    }
+                    Creature = creature
+                    Reaction = reaction
+                    Outcome = outcome
+                    }
+                ConfirmReaction unconfirmed
+                |> execute (globalState, machine)
+
+        | ConfirmReaction unconfirmed ->
+            let reactions = 
+                unconfirmed.ReactionsChecked.Unchecked
+                |> List.choose (
+                    Reactions.toReaction globalState (unconfirmed.Creature, unconfirmed.Outcome))
+            match reactions with
+            | [] -> 
+                ExecuteReaction (unconfirmed.Creature, unconfirmed.Outcome) 
+                |> execute (globalState, machine)
+            | (triggered, reactions) :: _ ->
+                let reactionNeeded = {
+                    ReactionNeeded.Creature = triggered
+                    Alternatives = 
+                        ReactionTaken.Pass ::
+                        (reactions
+                        |> List.map ReactionTaken.Reaction)                   
+                        }
+                       
+                let pending = 
+                    match machine with 
+                    | CombatFinished _ -> failwith "Not possible"
+                    | Machine.ActionNeeded _ -> failwith "Not possible"
+                    | Machine.ReactionNeeded (_, pending) -> pending
+                let machine = 
+                    Machine.ReactionNeeded(
+                        reactionNeeded, 
+                        WaitingForConfirmation.Reaction(unconfirmed, pending)
+                        )
+                ReactionTriggered(triggered, reactionNeeded)
+                |> execute (globalState, machine)  
+
+        | ExecuteReaction (creature, outcome) ->        
+            let state = 
+                globalState
+                |> Outcome.updateReaction outcome
+                |> Outcome.applyEffect outcome 
+
+            ReactionCompleted |> execute (state, machine)
+
+        | ReactionCompleted ->
+            match (GlobalState.CombatState globalState) with 
+            | Finished result -> globalState, Machine.CombatFinished result
+            | Ongoing -> 
+                match machine with 
+                | Machine.CombatFinished _ -> failwith "Impossible state"
+                | Machine.ActionNeeded pending ->  failwith "Impossible state"
+                | Machine.ReactionNeeded (reaction, pending) -> 
+                    match pending with
+                    | WaitingForConfirmation.Action unconfirmed ->
+                        // TODO check if other conditions cancel the original Action
+                        if globalState.CreatureState.[unconfirmed.Creature].HitPoints > 0
+                        then 
+                            ConfirmAction unconfirmed 
+                            |> execute (globalState, machine)
+                        else 
+                            ActionCancelled 
+                            |> execute (globalState, machine)
+                    | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
+                        let fakeReaction =  { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
+                        let machine = Machine.ReactionNeeded (fakeReaction, pending)
+                        // TODO check if other conditions cancel the original reaction
+                        if globalState.CreatureState.[unconfirmed.Creature].HitPoints > 0
+                        then 
+                            ConfirmReaction unconfirmed 
+                            |> execute (globalState, machine)
+                        else 
+                            ReactionCancelled unconfirmed.Creature
+                            |> execute (globalState, machine)
+
+        | PassReaction creature ->
+            let pending = 
+                match machine with
+                | CombatFinished _ -> failwith "Impossible state"
+                | ActionNeeded _ -> failwith "Impossible state"
+                | ReactionNeeded (_, pending) -> pending
+            match pending with 
+            | WaitingForConfirmation.Action unconfirmed -> 
+                let unconfirmed = 
+                    { unconfirmed with
+                        ReactionsChecked = 
+                            unconfirmed.ReactionsChecked 
+                            |> ReactionsChecked.check creature 
+                    }
+                ConfirmAction unconfirmed
+                |> execute (globalState, machine)                       
+            | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
+                let unconfirmed = 
+                    { unconfirmed with
+                        ReactionsChecked = 
+                            unconfirmed.ReactionsChecked 
+                            |> ReactionsChecked.check creature 
+                    }
+                let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
+                let machine = Machine.ReactionNeeded (fakeReaction, pending)
+                ConfirmReaction unconfirmed
+                |> execute (globalState, machine)
+
+        | ReactionCancelled creature -> 
+            // identical to PassReaction,
+            // but mark reaction as taken
+            let pending = 
+                match machine with
+                | CombatFinished _ -> failwith "Impossible state"
+                | ActionNeeded _ -> failwith "Impossible state"
+                | ReactionNeeded (_, pending) -> pending
+
+            let creatureState = 
+                { globalState.CreatureState.[creature] with 
+                    HasTakenReaction = true 
+                }
+            let globalState = 
+                { globalState with 
+                    CreatureState = 
+                        globalState.CreatureState 
+                        |> Map.add creature creatureState
+                }
+
+            match pending with 
+            | WaitingForConfirmation.Action unconfirmed -> 
+                let unconfirmed = 
+                    { unconfirmed with
+                        ReactionsChecked = 
+                            unconfirmed.ReactionsChecked 
+                            |> ReactionsChecked.check creature 
+                    }
+                ConfirmAction unconfirmed
+                |> execute (globalState, machine)            
+            | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
+                let unconfirmed = 
+                    { unconfirmed with
+                        ReactionsChecked = 
+                            unconfirmed.ReactionsChecked 
+                            |> ReactionsChecked.check creature 
+                    }
+                let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
+                let machine = Machine.ReactionNeeded (fakeReaction, pending)
+                ConfirmReaction unconfirmed
+                |> execute (globalState, machine)
 
 module TestSample = 
 
@@ -719,7 +1017,7 @@ module TestSample =
             }
         }
 
-    let goblin = 
+    let goblin : Creature.Statistics = 
         let stats: Abilities.Scores = {
             STR = 8
             DEX = 14
@@ -731,7 +1029,7 @@ module TestSample =
         { 
             Creature.Abilities = stats
             Creature.ProficiencyBonus = 2
-            Creature.HitPoints = 7
+            Creature.Statistics.HitPoints = 7
             Creature.Movement = 30<ft>
             Creature.ArmorClass = 15
             Creature.WeaponsProficiency = Weapons.Martial
@@ -740,11 +1038,13 @@ module TestSample =
 
     let creature1 = 
         CreatureID 1, 
+        GroupID 1,
         goblin,
         { North = 20; West = 20 } 
         
     let creature2 = 
         CreatureID 2, 
+        GroupID 2,
         goblin,
         { North = 25; West = 25 } 
 
@@ -755,4 +1055,15 @@ module TestSample =
 
     let world =
         (map, [ creature1; creature2 ])
-        |> World.Initialize 
+        |> GlobalState.Initialize 
+
+
+    let machine = 
+        { 
+            ActionNeeded.Creature = CreatureID 1
+            ActionNeeded.Alternatives = Actions.alternatives world |> Option.get
+        }
+        |> ActionNeeded
+
+    let initialized = 
+        (world, machine)

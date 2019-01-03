@@ -7,46 +7,70 @@ module App =
     open Fable.Helpers.React
     open Fable.Helpers.React.Props
     open MonsterVault.Domain
+    open MonsterVault.Domain.Actions
+    open MonsterVault.Domain.Reactions
 
     // MODEL
 
     type Model = {
-        World: World
+        GlobalState: GlobalState
+        Machine: Machine
         Journal: string list
         }
 
-    type Msg = CreatureID * Command
+    type Msg = 
+        | RestartCombat
+        | CreatureAction of (CreatureID * ActionTaken)
+        | CreatureReaction of (CreatureID * ReactionTaken)
 
-    let init () = {
-        World = TestSample.world
-        Journal = []
+    let init () = 
+        let combat, machine = TestSample.initialized
+        {
+            GlobalState = combat
+            Machine = machine
+            Journal = []
         }
 
     // UPDATE
 
-    let update (msg:Msg) (model:Model) =
-        match Rules.validate (model.World) msg with
-        | Error(error) -> 
-            { model with 
-                Journal = 
-                    error :: model.Journal 
-                    |> List.truncate 5
-            }
-        | Ok (creatureID, command) -> 
-            let world = update model.World (creatureID, command)
-            { model with
-                World = world
-                Journal = 
-                    (sprintf "%A: %A" creatureID command) :: model.Journal
-                    |> List.truncate 5
-            }
+    let update (msg: Msg) (model: Model) =
+
+        let globalState, machine = model.GlobalState, model.Machine
+
+        let internalCommand = 
+            match msg with 
+            | RestartCombat -> StartCombat (init >> fun x -> x.GlobalState, x.Machine)
+            | CreatureAction (creature, action) ->           
+                match machine with 
+                | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no action"
+                | Machine.ReactionNeeded _ -> InvalidCommand "Expecting a reaction, not an action"
+                | Machine.ActionNeeded actionNeeded ->
+                    if (not (actionNeeded.Alternatives |> List.contains action))
+                    then InvalidCommand "Unexpected action"
+                    else 
+                        match action with 
+                        | ActionTaken.FinishTurn -> Transition.FinishTurn creature
+                        | ActionTaken.Action(action) -> AttemptAction (creature, action)
+            | CreatureReaction (creature, reaction) -> 
+                match machine with 
+                | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no reaction"
+                | Machine.ActionNeeded _ -> InvalidCommand "Expecting an action, not a reaction"
+                | Machine.ReactionNeeded (reactionNeeded, pending) ->
+                    if (not (reactionNeeded.Alternatives |> List.contains reaction))
+                    then InvalidCommand "Unexpected reaction"
+                    else 
+                        match reaction with 
+                        | Pass -> Transition.PassReaction creature
+                        | Reactions.Reaction(reaction) -> AttemptReaction (creature, reaction)
+
+        execute (globalState, machine) internalCommand |> fun (state, machine) -> { GlobalState = state; Machine = machine; Journal = [] }
 
     // VIEW (rendered with React)
 
     let tileSize = 15
 
     let tileAt (model:Model) (x,y) color =
-        let map = model.World.BattleMap
+        let map = model.GlobalState.BattleMap
         let width = map.Width
         let height = map.Height
         rect [ 
@@ -61,7 +85,7 @@ module App =
 
     let battleMap (model:Model) dispatch =
 
-        let map = model.World.BattleMap
+        let map = model.GlobalState.BattleMap
         let width = map.Width
         let height = map.Height
 
@@ -70,15 +94,15 @@ module App =
                 SVGAttr.Height (height * tileSize)
             ]
             [
-                let map = model.World.BattleMap
+                let map = model.GlobalState.BattleMap
                 for x in 0 .. (map.Width - 1) do
                     for y in 0 .. (map.Height - 1) do
                         yield tileAt model (x,y) "LightGray"
 
-                for creature in model.World.Creatures do
+                for creature in model.GlobalState.CreatureState do
                     let state = creature.Value
                     let color = 
-                        if creature.Key = model.World.Active
+                        if creature.Key = model.GlobalState.TurnState.Value.Creature
                         then "Red"
                         else "Orange"
                     yield tileAt model (state.Position.West, state.Position.North) color
@@ -86,12 +110,23 @@ module App =
 
     let panelStyle = Style [ Padding 5; MarginBottom 5; MarginLeft 5; BorderRadius 5; BackgroundColor "LightGray" ]
 
-    let state (model:Model) dispatch =
-        div [ panelStyle ] [ str (string (model.World.Creatures)) ]
+    let state (model: Model) dispatch =
+        div [ panelStyle ] [ str (string (model.GlobalState.CreatureState)) ]
 
-    let commands (model:Model) dispatch =
+    let commands (model: Model) dispatch =
 
-        let cmds = alternatives model.World
+        let machine = model.Machine
+        let cmds = 
+            match machine with 
+            | Machine.ActionNeeded (actionNeeded) -> 
+                actionNeeded.Alternatives
+                |> List.map (fun action -> actionNeeded.Creature, action)
+                |> List.map (Msg.CreatureAction)
+            | Machine.ReactionNeeded (reactionNeeded, _) -> 
+                reactionNeeded.Alternatives
+                |> List.map (fun action -> reactionNeeded.Creature, action)
+                |> List.map (Msg.CreatureReaction)
+            | Machine.CombatFinished _ -> [ Msg.RestartCombat ]
 
         div [ panelStyle ]
             [
@@ -100,7 +135,7 @@ module App =
                     button [ OnClick (fun _ -> dispatch cmd) ] [ str (string cmd) ] 
             ]
     
-    let journal (model:Model) dispatch =
+    let journal (model: Model) dispatch =
         div [ panelStyle ]
             [
                 for entry in model.Journal do
@@ -108,7 +143,7 @@ module App =
                     yield br []
             ]
 
-    let view (model:Model) dispatch =
+    let view (model: Model) dispatch =
 
         div []
             [ 
