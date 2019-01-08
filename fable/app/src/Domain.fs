@@ -142,22 +142,20 @@ module Space =
 
 module Weapons = 
 
-    type Damage = Roll
-
     type Grip =
         | SingleHanded
         | TwoHanded
 
     type Usage = {
         Grip: Grip
-        Damage: Damage
+        Damage: Roll
         }
 
     module Melee = 
 
         type Versatile = {
-            SingleHandedDamage: Damage
-            TwoHandedDamage: Damage
+            SingleHandedDamage: Roll
+            TwoHandedDamage: Roll
             }
 
         type Handling = 
@@ -388,8 +386,7 @@ module Domain =
                 not (this.Dead)
             member this.CanReact =
                 this.CanAct && (not this.HasTakenReaction)   
-
-        
+       
         let initialize (stats: Creature.Statistics, group: GroupID, pos: Position) =
             {
                 HitPoints = stats.HitPoints
@@ -407,7 +404,7 @@ module Domain =
     type GlobalState = {
         BattleMap: BattleMap
         Initiative: CreatureID list
-        TurnState: Option<TurnState>
+        Turn: Option<TurnState>
         CreatureState: Map<CreatureID, Creature.State>
         Statistics: Map<CreatureID, Creature.Statistics>
         }
@@ -429,7 +426,7 @@ module Domain =
             {
                 BattleMap = map
                 Initiative = initiative
-                TurnState = turn
+                Turn = turn
                 CreatureState = 
                     creatures 
                     |> List.map (fun (creatureId, group, stats, pos) -> 
@@ -468,12 +465,12 @@ module Domain =
         static member applyEffect (outcome: Outcome) (state: GlobalState) =
             match outcome with
             | Outcome.Move (creature, direction) ->                  
-                let currentTurn = state.TurnState.Value
+                let currentTurn = state.Turn.Value
                 let currentState = state.CreatureState.[creature]
                 let updatedState = { currentState with Position = currentState.Position |> move direction }
                 { state with
                     CreatureState = state.CreatureState |> Map.add creature updatedState 
-                    TurnState = 
+                    Turn = 
                         { currentTurn with 
                             MovementLeft = currentTurn.MovementLeft - 5<ft> 
                         }
@@ -499,11 +496,11 @@ module Domain =
             | Outcome.Move _ -> state         
             | Outcome.FailedAttack _ -> 
                 { state with 
-                    TurnState = Some { state.TurnState.Value with HasTakenAction = true } 
+                    Turn = Some { state.Turn.Value with HasTakenAction = true } 
                 }
             | Outcome.SuccessfulAttack _ -> 
                 { state with 
-                    TurnState = Some { state.TurnState.Value with HasTakenAction = true } 
+                    Turn = Some { state.Turn.Value with HasTakenAction = true } 
                 }
         static member updateReaction (outcome: Outcome) (state: GlobalState) =
             match outcome with
@@ -527,14 +524,14 @@ module Domain =
 
         type Action =
             | Move of Direction
-            | Attack of CreatureID
+            | Attack of (CreatureID * Attacks.Statistics)
 
         type ActionTaken =
             | FinishTurn 
             | Action of Action
 
         let alternatives (state: GlobalState) =
-            state.TurnState
+            state.Turn
             |> Option.bind (fun turn ->
                 let creature = turn.Creature
                 if state.CreatureState.[creature].CanAct
@@ -547,11 +544,18 @@ module Domain =
                                 |> List.map (fun dir -> Action(Move(dir))) 
                         if (not turn.HasTakenAction)
                         then                        
+                            let weapons = state.Statistics.[creature].Attacks
+                            let attackerStats = state.Statistics.[creature]
+                            let attacks = weapons |> List.collect (fun w -> Attacks.using w attackerStats)
+
                             yield! 
                                 state.Initiative
                                 |> List.filter (fun target -> target <> creature)
                                 |> List.filter (fun target -> not (state.CreatureState.[target].Dead))
-                                |> List.map (fun target -> Action(Attack target))
+                                |> List.collect (fun target -> 
+                                    attacks 
+                                    |> List.map (fun attack -> Action(Attack (target, attack))))
+
                         yield FinishTurn
                     ]
                     |> Some
@@ -561,7 +565,7 @@ module Domain =
     module Reactions = 
 
         type Reaction =
-            | OpportunityAttack of CreatureID
+            | OpportunityAttack of (CreatureID * Attacks.Statistics)
             | Riposte of CreatureID
 
         type ReactionTaken = 
@@ -575,7 +579,20 @@ module Domain =
             then None
             else
                 match outcome with
-                | Move _ -> Some(creature, [ OpportunityAttack trigger ])
+                | Move _ -> 
+                    // do we have melee attacks
+                    let weapons = globalState.Statistics.[creature].Attacks
+                    let attackerStats = globalState.Statistics.[creature]
+                    let attacks = 
+                        weapons 
+                        |> List.collect (fun w -> Attacks.using w attackerStats)
+                        |> List.filter (fun w -> w.Type = Attacks.Melee)
+                    match attacks with 
+                    | [] -> None 
+                    | _ -> 
+                        attacks
+                        |> List.map (fun attack -> OpportunityAttack (trigger, attack))
+                        |> fun oppAttacks -> Some(creature, oppAttacks)
                 | SuccessfulAttack _ -> None 
                 | FailedAttack _ -> None
 
@@ -679,7 +696,7 @@ module Domain =
             match (GlobalState.CombatState globalState) with 
             | Finished result -> globalState, Machine.CombatFinished result
             | Ongoing -> 
-                let turn = globalState.TurnState.Value
+                let turn = globalState.Turn.Value
                 let nextCreatureUp = 
                     globalState.Initiative 
                     |> List.findIndex (fun x -> x = turn.Creature)
@@ -696,7 +713,7 @@ module Domain =
                     }
                 let globalState = 
                     { globalState with 
-                        TurnState = Some nextTurn 
+                        Turn = Some nextTurn 
                         CreatureState = 
                             globalState.CreatureState
                             |> Map.add nextCreatureUp nextCreatureState
@@ -712,9 +729,13 @@ module Domain =
             let outcome = 
                 match action with
                 | Action.Move dir -> Outcome.Move (creature, dir)
-                | Attack target -> 
+                | Attack (target, attack) -> 
                     // TODO properly handle attack resolution
-                    Outcome.SuccessfulAttack (creature, target, 1)
+                    let attackRoll = Roll.roll (1 * d20) + attack.HitBonus
+                    let ac = globalState.Statistics.[target].ArmorClass
+                    if attackRoll < ac
+                    then Outcome.FailedAttack (creature, target)
+                    else Outcome.SuccessfulAttack (creature, target, attack.Damage |> Roll.roll)
             let reactions = 
                 globalState.Initiative
                 |> List.choose (
@@ -769,7 +790,7 @@ module Domain =
             ActionCompleted |> execute (state, machine)   
 
         | ActionCancelled ->
-            let currentTurn = globalState.TurnState.Value
+            let currentTurn = globalState.Turn.Value
             FinishTurn currentTurn.Creature 
             |> execute (globalState, machine)
 
@@ -777,7 +798,7 @@ module Domain =
             match (GlobalState.CombatState globalState) with 
             | Finished result -> globalState, Machine.CombatFinished result
             | Ongoing -> 
-                match globalState.TurnState with 
+                match globalState.Turn with 
                 | None -> failwith "Impossible: when an action completes, there must be a turn"
                 | Some turn ->
                     match Actions.alternatives globalState with 
@@ -795,7 +816,7 @@ module Domain =
         | AttemptReaction (creature, reaction) ->
             let outcome = 
                 match reaction with
-                | Reaction.OpportunityAttack target -> 
+                | Reaction.OpportunityAttack (target, attackStatistics) -> 
                     // TODO properly handle attack resolution
                     Outcome.SuccessfulAttack (creature, target, 1)
                 | Reaction.Riposte target -> 

@@ -32,7 +32,6 @@ module App =
         }
 
     // UPDATE
-
     let update (msg: Msg) (model: Model) =
 
         let globalState, machine = model.GlobalState, model.Machine
@@ -69,7 +68,7 @@ module App =
 
     let tileSize = 15
 
-    let tileAt (model:Model) (x,y) color =
+    let tileAt (model: Model) (x, y) color =
         let map = model.GlobalState.BattleMap
         let width = map.Width
         let height = map.Height
@@ -83,7 +82,7 @@ module App =
             SVGAttr.Fill color 
           ] [ ]
 
-    let battleMap (model:Model) dispatch =
+    let battleMap (model: Model) dispatch =
 
         let map = model.GlobalState.BattleMap
         let width = map.Width
@@ -102,7 +101,7 @@ module App =
                 for creature in model.GlobalState.CreatureState do
                     let state = creature.Value
                     let color = 
-                        if creature.Key = model.GlobalState.TurnState.Value.Creature
+                        if creature.Key = model.GlobalState.Turn.Value.Creature
                         then "Red"
                         else "Orange"
                     yield tileAt model (state.Position.West, state.Position.North) color
@@ -113,10 +112,16 @@ module App =
     let state (model: Model) dispatch =
         div [ panelStyle ] [ str (string (model.GlobalState.CreatureState)) ]
 
+    let message (msg: Msg) =
+        match msg with
+        | Msg.CreatureAction (creature, action) -> action |> string
+        | Msg.CreatureReaction (creature, reaction) -> reaction |> string
+        | Msg.RestartCombat -> "Restart" 
+
     let commands (model: Model) dispatch =
 
         let machine = model.Machine
-        let cmds = 
+        let messages = 
             match machine with 
             | Machine.ActionNeeded (actionNeeded) -> 
                 actionNeeded.Alternatives
@@ -131,8 +136,8 @@ module App =
         div [ panelStyle ]
             [
                 yield div [] [ str "Alternatives" ]
-                for cmd in cmds -> 
-                    button [ OnClick (fun _ -> dispatch cmd) ] [ str (string cmd) ] 
+                for msg in messages -> 
+                    button [ OnClick (fun _ -> dispatch msg) ] [ str (message msg) ] 
             ]
     
     let journal (model: Model) dispatch =
