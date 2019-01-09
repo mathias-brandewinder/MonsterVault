@@ -530,6 +530,84 @@ module Domain =
             | FinishTurn 
             | Action of Action
 
+        let movementCost (state: GlobalState) (pos: Position) (dir: Direction) =
+            // TODO add difficult terrain, etc...
+            cellSize
+
+        module Rules = 
+
+            type Rule = GlobalState -> (CreatureID * Action) -> bool
+
+            let ``A creature must be active to act`` : Rule = 
+                fun state ->
+                    fun (creatureID, _) ->
+                        match state.Turn with
+                        | None -> false
+                        | Some turn -> turn.Creature = creatureID
+
+            let ``A creature cannot move if it has not enough movement left`` : Rule =
+                fun state ->
+                    fun (creatureID, action) ->
+                        match action with 
+                        | Move direction -> 
+                            match state.Turn with
+                            | None -> false
+                            | Some(turn) ->
+                                let creatureState = state.CreatureState.[creatureID]
+                                movementCost state creatureState.Position direction <= turn.MovementLeft
+                        | _ -> true
+
+            let ``A creature cannot move to a space occupied by another creature`` : Rule =
+                fun state ->
+                    fun (creatureID, action) ->
+                        match action with
+                        | Move direction ->
+                            let creatureState = state.CreatureState.[creatureID]
+                            let destination = 
+                                creatureState.Position 
+                                |> move direction
+                            state.CreatureState 
+                            |> Map.exists (fun ID state -> ID <> creatureID && state.Position = destination)
+                            |> not
+                        | _ -> true
+
+            let ``A creature can take at most one action per turn`` : Rule =
+                fun state ->
+                    fun (_, action) ->
+                        match action with
+                        | Move _ -> true
+                        | _ ->
+                            match state.Turn with 
+                            | None -> false 
+                            | Some turn -> 
+                                not turn.HasTakenAction
+
+            let ``A creature can only attack within weapon range`` : Rule =
+                fun state ->
+                    fun (creatureID, action) ->
+                        match action with 
+                        | Attack (targetID, weapon) ->
+                            let attackerState = state.CreatureState.[creatureID]
+                            let targetState = state.CreatureState.[targetID]
+                            let dist = distance attackerState.Position targetState.Position
+                            let maximumDistance = 
+                                match weapon.Reach with
+                                | Attacks.Reach.Melee (reach) -> reach
+                                | Attacks.Reach.Ranged (range) -> range.Long
+                            dist <= maximumDistance
+                        | _ -> true
+
+            let rules = [
+                ``A creature must be active to act``
+                ``A creature cannot move if it has not enough movement left``
+                ``A creature cannot move to a space occupied by another creature``
+                ``A creature can take at most one action per turn``
+                ``A creature can only attack within weapon range``
+                ]
+
+            let validateAgainst state = 
+                fun x -> (true, rules) ||> List.fold (fun flag rule -> rule state x && flag)
+
         let alternatives (state: GlobalState) =
             state.Turn
             |> Option.bind (fun turn ->
@@ -537,27 +615,27 @@ module Domain =
                 if state.CreatureState.[creature].CanAct
                 then 
                     [           
-                        if turn.MovementLeft >= 5<ft>
-                        then 
-                            yield! 
-                                [ N; NW; W; SW; S; SE; E; NE ]
-                                |> List.map (fun dir -> Action(Move(dir))) 
-                        if (not turn.HasTakenAction)
-                        then                        
-                            let weapons = state.Statistics.[creature].Attacks
-                            let attackerStats = state.Statistics.[creature]
-                            let attacks = weapons |> List.collect (fun w -> Attacks.using w attackerStats)
+                        // every possible movement
+                        yield! 
+                            [ N; NW; W; SW; S; SE; E; NE ]
+                            |> List.map Move 
 
-                            yield! 
-                                state.Initiative
-                                |> List.filter (fun target -> target <> creature)
-                                |> List.filter (fun target -> not (state.CreatureState.[target].Dead))
-                                |> List.collect (fun target -> 
-                                    attacks 
-                                    |> List.map (fun attack -> Action(Attack (target, attack))))
-
-                        yield FinishTurn
+                        // every possible attack
+                        let attackerStats = state.Statistics.[creature]
+                        let attacks = 
+                            state.Statistics.[creature].Attacks
+                            |> List.collect (fun w -> Attacks.using w attackerStats)                          
+                        yield!
+                            state.Initiative
+                            |> List.filter (fun target -> target <> creature)
+                            |> List.filter (fun target -> not (state.CreatureState.[target].Dead))
+                            |> List.collect (fun target -> 
+                                attacks 
+                                |> List.map (fun attack -> (Attack (target, attack))))
                     ]
+                    |> List.filter (fun action -> Rules.validateAgainst state (creature, action))
+                    |> List.map Action
+                    |> fun actions -> FinishTurn :: actions
                     |> Some
                 else None
                 )
