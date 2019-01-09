@@ -270,13 +270,23 @@ module Attacks =
         }
 
     let damage ac (attack: Statistics) =
-        let attackRoll = (1 * d20 + attack.HitBonus) |> Roll.roll
-        if attackRoll < ac
-        then None
-        else 
+        let baseAttackRoll = 1 * d20 |> Roll.roll
+        match baseAttackRoll with
+        | 1 -> None // critical fail
+        | 20 -> 
+            // critical hit
             attack.Damage 
             |> Roll.roll
+            |> (*) 2
             |> Some
+        | roll -> 
+            let attackRoll = roll + attack.HitBonus
+            if attackRoll < ac
+            then None
+            else 
+                attack.Damage 
+                |> Roll.roll
+                |> Some
 
     let abilityBonus (stats: Creature.Statistics) (weapon: Weapon) =
         
@@ -717,7 +727,7 @@ module Domain =
                             match attack.Reach with 
                             | Attacks.Reach.Melee reach -> dist <= reach
                             | Attacks.Reach.Ranged _ -> false)
-                        |> List.map (fun attack -> Riposte (target, attack))
+                        |> List.map (fun attack -> Riposte (origin, attack))
                 | FailedAttack _ -> []
 
         let toAction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
