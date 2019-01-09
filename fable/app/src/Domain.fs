@@ -650,21 +650,35 @@ module Domain =
             | Pass 
             | Reaction of Reaction
 
-        let toAction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+        let opportunityAttacks (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             if creature = trigger
             then None
             elif (not globalState.CreatureState.[creature].CanReact)
             then None
             else
                 match outcome with
-                | Move _ -> 
-                    // do we have melee attacks
+                | Move (_, dir) -> 
+                    // do we have melee attacks that we can use within range,
+                    // and are we in range before, out of range after
+                    let distanceBefore = 
+                        distance 
+                            globalState.CreatureState.[trigger].Position 
+                            globalState.CreatureState.[creature].Position
+                    let distanceAfter = 
+                        distance 
+                            (globalState.CreatureState.[trigger].Position |> move dir)
+                            globalState.CreatureState.[creature].Position
+                    
                     let weapons = globalState.Statistics.[creature].Attacks
                     let attackerStats = globalState.Statistics.[creature]
                     let attacks = 
                         weapons 
                         |> List.collect (fun w -> Attacks.using w attackerStats)
-                        |> List.filter (fun w -> w.Type = Attacks.Melee)
+                        |> List.filter (fun attack -> attack.Type = Attacks.Melee)
+                        |> List.filter (fun attack -> 
+                            match attack.Reach with 
+                            | Attacks.Reach.Melee reach -> distanceBefore <= reach && distanceAfter > reach
+                            | Attacks.Reach.Ranged _ -> false)
                     match attacks with 
                     | [] -> None 
                     | _ -> 
@@ -674,7 +688,7 @@ module Domain =
                 | SuccessfulAttack _ -> None 
                 | FailedAttack _ -> None
 
-        let toReaction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+        let riposte (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             if creature = trigger
             then None
             elif (not globalState.CreatureState.[creature].CanReact)
@@ -687,6 +701,12 @@ module Domain =
                     then Some (creature, [ Riposte origin ])
                     else None 
                 | FailedAttack _ -> None
+
+        let toAction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+            opportunityAttacks globalState (trigger, outcome) creature
+            
+        let toReaction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+            riposte globalState (trigger, outcome) creature
 
     open Actions 
     open Reactions 
