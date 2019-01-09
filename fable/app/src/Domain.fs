@@ -269,6 +269,15 @@ module Attacks =
         Damage: Roll
         }
 
+    let damage ac (attack: Statistics) =
+        let attackRoll = (1 * d20 + attack.HitBonus) |> Roll.roll
+        if attackRoll < ac
+        then None
+        else 
+            attack.Damage 
+            |> Roll.roll
+            |> Some
+
     let abilityBonus (stats: Creature.Statistics) (weapon: Weapon) =
         
         let finesse = 
@@ -644,7 +653,7 @@ module Domain =
 
         type Reaction =
             | OpportunityAttack of (CreatureID * Attacks.Statistics)
-            | Riposte of CreatureID
+            | Riposte of (CreatureID * Attacks.Statistics)
 
         type ReactionTaken = 
             | Pass 
@@ -652,9 +661,9 @@ module Domain =
 
         let opportunityAttacks (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             if creature = trigger
-            then None
+            then []
             elif (not globalState.CreatureState.[creature].CanReact)
-            then None
+            then []
             else
                 match outcome with
                 | Move (_, dir) -> 
@@ -671,42 +680,57 @@ module Domain =
                     
                     let weapons = globalState.Statistics.[creature].Attacks
                     let attackerStats = globalState.Statistics.[creature]
-                    let attacks = 
+                    weapons 
+                    |> List.collect (fun w -> Attacks.using w attackerStats)
+                    |> List.filter (fun attack -> attack.Type = Attacks.Melee)
+                    |> List.filter (fun attack -> 
+                        match attack.Reach with 
+                        | Attacks.Reach.Melee reach -> distanceBefore <= reach && distanceAfter > reach
+                        | Attacks.Reach.Ranged _ -> false)
+                    |> List.map (fun attack -> OpportunityAttack(trigger, attack))
+                | SuccessfulAttack _ -> [] 
+                | FailedAttack _ -> []
+
+        let riposte (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+            if creature = trigger
+            then []
+            elif (not globalState.CreatureState.[creature].CanReact)
+            then []
+            else
+                match outcome with
+                | Move _ -> []
+                | SuccessfulAttack (origin, target, _) -> 
+                    if creature <> target
+                    then [] 
+                    else
+                        let dist = 
+                            distance 
+                                globalState.CreatureState.[trigger].Position 
+                                globalState.CreatureState.[creature].Position
+                        
+                        let weapons = globalState.Statistics.[creature].Attacks
+                        let attackerStats = globalState.Statistics.[creature]
                         weapons 
                         |> List.collect (fun w -> Attacks.using w attackerStats)
                         |> List.filter (fun attack -> attack.Type = Attacks.Melee)
                         |> List.filter (fun attack -> 
                             match attack.Reach with 
-                            | Attacks.Reach.Melee reach -> distanceBefore <= reach && distanceAfter > reach
+                            | Attacks.Reach.Melee reach -> dist <= reach
                             | Attacks.Reach.Ranged _ -> false)
-                    match attacks with 
-                    | [] -> None 
-                    | _ -> 
-                        attacks
-                        |> List.map (fun attack -> OpportunityAttack (trigger, attack))
-                        |> fun oppAttacks -> Some(creature, oppAttacks)
-                | SuccessfulAttack _ -> None 
-                | FailedAttack _ -> None
-
-        let riposte (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
-            if creature = trigger
-            then None
-            elif (not globalState.CreatureState.[creature].CanReact)
-            then None
-            else
-                match outcome with
-                | Move _ -> None
-                | SuccessfulAttack (origin, target, _) -> 
-                    if creature = target 
-                    then Some (creature, [ Riposte origin ])
-                    else None 
-                | FailedAttack _ -> None
+                        |> List.map (fun attack -> Riposte (target, attack))
+                | FailedAttack _ -> []
 
         let toAction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
-            opportunityAttacks globalState (trigger, outcome) creature
-            
-        let toReaction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
-            riposte globalState (trigger, outcome) creature
+            [
+                opportunityAttacks globalState (trigger, outcome) creature
+                riposte globalState (trigger, outcome) creature
+            ]
+            |> List.collect id
+            |> function 
+                | [] -> None
+                | reactions -> Some (creature, reactions)
+
+        let toReaction = toAction
 
     open Actions 
     open Reactions 
@@ -828,12 +852,10 @@ module Domain =
                 match action with
                 | Action.Move dir -> Outcome.Move (creature, dir)
                 | Attack (target, attack) -> 
-                    // TODO properly handle attack resolution
-                    let attackRoll = Roll.roll (1 * d20) + attack.HitBonus
                     let ac = globalState.Statistics.[target].ArmorClass
-                    if attackRoll < ac
-                    then Outcome.FailedAttack (creature, target)
-                    else Outcome.SuccessfulAttack (creature, target, attack.Damage |> Roll.roll)
+                    match Attacks.damage ac attack with
+                    | None -> Outcome.FailedAttack (creature, target)
+                    | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
             let reactions = 
                 globalState.Initiative
                 |> List.choose (
@@ -915,11 +937,15 @@ module Domain =
             let outcome = 
                 match reaction with
                 | Reaction.OpportunityAttack (target, attackStatistics) -> 
-                    // TODO properly handle attack resolution
-                    Outcome.SuccessfulAttack (creature, target, 1)
-                | Reaction.Riposte target -> 
-                    // TODO properly handle riposte / attack resolution
-                    Outcome.SuccessfulAttack (creature, target, 1) 
+                    let ac = globalState.Statistics.[target].ArmorClass
+                    match Attacks.damage ac attackStatistics with
+                    | None -> Outcome.FailedAttack (creature, target)
+                    | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
+                | Reaction.Riposte (target, attackStatistics) -> 
+                    let ac = globalState.Statistics.[target].ArmorClass
+                    match Attacks.damage ac attackStatistics with
+                    | None -> Outcome.FailedAttack (creature, target)
+                    | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
             let alreadyReacting = machine |> Machine.Reacting
             let notReacting = 
                 globalState.Initiative 
