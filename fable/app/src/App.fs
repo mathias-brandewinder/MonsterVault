@@ -15,7 +15,7 @@ module App =
     type Model = {
         GlobalState: GlobalState
         Machine: Machine
-        Journal: string list
+        Journal: list<Transition>
         }
 
     type Msg = 
@@ -62,7 +62,9 @@ module App =
                         | Pass -> Transition.PassReaction creature
                         | Reactions.Reaction(reaction) -> AttemptReaction (creature, reaction)
 
-        execute (globalState, machine) internalCommand |> fun (state, machine) -> { GlobalState = state; Machine = machine; Journal = [] }
+        execute (globalState, machine, model.Journal) internalCommand 
+        |> fun (state, machine, journal) -> 
+            { GlobalState = state; Machine = machine; Journal = journal }
 
     // VIEW (rendered with React)
 
@@ -144,7 +146,7 @@ module App =
         div [ panelStyle ]
             [
                 for entry in model.Journal do
-                    yield str entry
+                    yield (str (string entry))
                     yield br []
             ]
 

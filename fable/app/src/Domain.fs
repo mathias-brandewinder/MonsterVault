@@ -730,7 +730,7 @@ module Domain =
                         |> List.map (fun attack -> Riposte (origin, attack))
                 | FailedAttack _ -> []
 
-        let toAction (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
+        let alternatives (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             [
                 opportunityAttacks globalState (trigger, outcome) creature
                 riposte globalState (trigger, outcome) creature
@@ -739,8 +739,6 @@ module Domain =
             |> function 
                 | [] -> None
                 | reactions -> Some (creature, reactions)
-
-        let toReaction = toAction
 
     open Actions 
     open Reactions 
@@ -819,14 +817,17 @@ module Domain =
         | ExecuteReaction of (CreatureID * Outcome)
         | PassReaction of CreatureID
 
-    let rec execute (globalState: GlobalState, machine: Machine) (transition: Transition) : (GlobalState * Machine) =
+    let rec execute (globalState: GlobalState, machine: Machine, journal: list<Transition>) (transition: Transition) : (GlobalState * Machine * list<Transition>) =
         printfn "%A" transition
+        let journal = transition :: journal
         match transition with
-        | InvalidCommand _ -> globalState, machine
-        | StartCombat init -> init ()
+        | InvalidCommand _ -> globalState, machine, journal
+        | StartCombat init -> 
+            let state, machine = init ()
+            state, machine, []
         | FinishTurn creature ->
             match (GlobalState.CombatState globalState) with 
-            | Finished result -> globalState, Machine.CombatFinished result
+            | Finished result -> globalState, Machine.CombatFinished result, journal
             | Ongoing -> 
                 let turn = globalState.Turn.Value
                 let nextCreatureUp = 
@@ -852,10 +853,11 @@ module Domain =
                     }
                 let alternatives = Actions.alternatives globalState
                 match alternatives with
-                | None -> FinishTurn nextCreatureUp |> execute (globalState, machine)
+                | None -> FinishTurn nextCreatureUp |> execute (globalState, machine, journal)
                 | Some alternatives ->
                     globalState, 
-                    ActionNeeded({ Creature = nextCreatureUp; Alternatives = alternatives })
+                    ActionNeeded({ Creature = nextCreatureUp; Alternatives = alternatives }),
+                    journal
 
         | AttemptAction (creature, action) -> 
             let outcome = 
@@ -869,11 +871,11 @@ module Domain =
             let reactions = 
                 globalState.Initiative
                 |> List.choose (
-                    Reactions.toAction globalState (creature, outcome))
+                    Reactions.alternatives globalState (creature, outcome))
             match reactions with
             | [] -> 
                 ExecuteAction (creature, outcome) 
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
             | _ ->
                 let unconfirmed : UnconfirmedActionResult = {
                     ReactionsChecked = { 
@@ -885,17 +887,17 @@ module Domain =
                     Outcome = outcome
                     }
                 ConfirmAction unconfirmed
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
 
         | ConfirmAction unconfirmed ->
             let reactions = 
                 unconfirmed.ReactionsChecked.Unchecked
                 |> List.choose (
-                    Reactions.toAction globalState (unconfirmed.Creature, unconfirmed.Outcome))
+                    Reactions.alternatives globalState (unconfirmed.Creature, unconfirmed.Outcome))
             match reactions with
             | [] -> 
                 ExecuteAction (unconfirmed.Creature, unconfirmed.Outcome) 
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
             | (triggered, reactions) :: _ ->
                 let reactionNeeded = {
                     ReactionNeeded.Creature = triggered
@@ -910,23 +912,23 @@ module Domain =
                         WaitingForConfirmation.Action(unconfirmed)
                         )
                 ReactionTriggered(triggered, reactionNeeded)
-                |> execute (globalState, machine)  
+                |> execute (globalState, machine, journal)  
 
         | ExecuteAction (creature, outcome) ->
             let state = 
                 globalState
                 |> Outcome.updateAction outcome
                 |> Outcome.applyEffect outcome 
-            ActionCompleted |> execute (state, machine)   
+            ActionCompleted |> execute (state, machine, journal)   
 
         | ActionCancelled ->
             let currentTurn = globalState.Turn.Value
             FinishTurn currentTurn.Creature 
-            |> execute (globalState, machine)
+            |> execute (globalState, machine, journal)
 
         | ActionCompleted ->
             match (GlobalState.CombatState globalState) with 
-            | Finished result -> globalState, Machine.CombatFinished result
+            | Finished result -> globalState, Machine.CombatFinished result, journal
             | Ongoing -> 
                 match globalState.Turn with 
                 | None -> failwith "Impossible: when an action completes, there must be a turn"
@@ -934,14 +936,14 @@ module Domain =
                     match Actions.alternatives globalState with 
                     | None -> 
                         FinishTurn turn.Creature 
-                        |> execute (globalState, machine)
+                        |> execute (globalState, machine, journal)
                     | Some alternatives ->
                         let machine = 
                             ActionNeeded({ Creature = turn.Creature; Alternatives = alternatives })
-                        globalState, machine 
+                        globalState, machine, journal
 
         | ReactionTriggered (creature, reactionNeeded) -> 
-            globalState, machine
+            globalState, machine, journal
 
         | AttemptReaction (creature, reaction) ->
             let outcome = 
@@ -963,12 +965,12 @@ module Domain =
             let reactions = 
                 notReacting
                 |> List.choose (
-                    Reactions.toReaction globalState (creature, outcome))
+                    Reactions.alternatives globalState (creature, outcome))
 
             match reactions with
             | [] -> 
                 ExecuteReaction (creature, outcome) 
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
             | _ ->
                 let unconfirmed : UnconfirmedReactionResult = {
                     ReactionsChecked = {
@@ -980,17 +982,17 @@ module Domain =
                     Outcome = outcome
                     }
                 ConfirmReaction unconfirmed
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
 
         | ConfirmReaction unconfirmed ->
             let reactions = 
                 unconfirmed.ReactionsChecked.Unchecked
                 |> List.choose (
-                    Reactions.toReaction globalState (unconfirmed.Creature, unconfirmed.Outcome))
+                    Reactions.alternatives globalState (unconfirmed.Creature, unconfirmed.Outcome))
             match reactions with
             | [] -> 
                 ExecuteReaction (unconfirmed.Creature, unconfirmed.Outcome) 
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
             | (triggered, reactions) :: _ ->
                 let reactionNeeded = {
                     ReactionNeeded.Creature = triggered
@@ -1011,7 +1013,7 @@ module Domain =
                         WaitingForConfirmation.Reaction(unconfirmed, pending)
                         )
                 ReactionTriggered(triggered, reactionNeeded)
-                |> execute (globalState, machine)  
+                |> execute (globalState, machine, journal)  
 
         | ExecuteReaction (creature, outcome) ->        
             let state = 
@@ -1019,11 +1021,11 @@ module Domain =
                 |> Outcome.updateReaction outcome
                 |> Outcome.applyEffect outcome 
 
-            ReactionCompleted |> execute (state, machine)
+            ReactionCompleted |> execute (state, machine, journal)
 
         | ReactionCompleted ->
             match (GlobalState.CombatState globalState) with 
-            | Finished result -> globalState, Machine.CombatFinished result
+            | Finished result -> globalState, Machine.CombatFinished result, journal
             | Ongoing -> 
                 match machine with 
                 | Machine.CombatFinished _ -> failwith "Impossible state"
@@ -1035,10 +1037,10 @@ module Domain =
                         if globalState.CreatureState.[unconfirmed.Creature].HitPoints > 0
                         then 
                             ConfirmAction unconfirmed 
-                            |> execute (globalState, machine)
+                            |> execute (globalState, machine, journal)
                         else 
                             ActionCancelled 
-                            |> execute (globalState, machine)
+                            |> execute (globalState, machine, journal)
                     | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
                         let fakeReaction =  { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
                         let machine = Machine.ReactionNeeded (fakeReaction, pending)
@@ -1046,10 +1048,10 @@ module Domain =
                         if globalState.CreatureState.[unconfirmed.Creature].HitPoints > 0
                         then 
                             ConfirmReaction unconfirmed 
-                            |> execute (globalState, machine)
+                            |> execute (globalState, machine, journal)
                         else 
                             ReactionCancelled unconfirmed.Creature
-                            |> execute (globalState, machine)
+                            |> execute (globalState, machine, journal)
 
         | PassReaction creature ->
             let pending = 
@@ -1066,7 +1068,7 @@ module Domain =
                             |> ReactionsChecked.check creature 
                     }
                 ConfirmAction unconfirmed
-                |> execute (globalState, machine)                       
+                |> execute (globalState, machine, journal)                       
             | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
                 let unconfirmed = 
                     { unconfirmed with
@@ -1077,7 +1079,7 @@ module Domain =
                 let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
                 let machine = Machine.ReactionNeeded (fakeReaction, pending)
                 ConfirmReaction unconfirmed
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
 
         | ReactionCancelled creature -> 
             // identical to PassReaction,
@@ -1108,7 +1110,7 @@ module Domain =
                             |> ReactionsChecked.check creature 
                     }
                 ConfirmAction unconfirmed
-                |> execute (globalState, machine)            
+                |> execute (globalState, machine, journal)            
             | WaitingForConfirmation.Reaction (unconfirmed, pending) -> 
                 let unconfirmed = 
                     { unconfirmed with
@@ -1119,7 +1121,7 @@ module Domain =
                 let fakeReaction = { ReactionNeeded.Creature = unconfirmed.Creature; Alternatives = [] }
                 let machine = Machine.ReactionNeeded (fakeReaction, pending)
                 ConfirmReaction unconfirmed
-                |> execute (globalState, machine)
+                |> execute (globalState, machine, journal)
 
 module TestSample = 
 
