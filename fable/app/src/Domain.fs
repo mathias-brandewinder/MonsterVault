@@ -647,6 +647,7 @@ module Domain =
                         yield!
                             state.Initiative
                             |> List.filter (fun target -> target <> creature)
+                            |> List.filter (fun target -> state.CreatureState.[target].Group <> state.CreatureState.[creature].Group)
                             |> List.filter (fun target -> not (state.CreatureState.[target].Dead))
                             |> List.collect (fun target -> 
                                 attacks 
@@ -673,6 +674,8 @@ module Domain =
             if creature = trigger
             then []
             elif (not globalState.CreatureState.[creature].CanReact)
+            then []
+            elif globalState.CreatureState.[trigger].Group = globalState.CreatureState.[creature].Group
             then []
             else
                 match outcome with
@@ -712,6 +715,8 @@ module Domain =
                 | SuccessfulAttack (origin, target, _) -> 
                     if creature <> target
                     then [] 
+                    elif globalState.CreatureState.[target].Group = globalState.CreatureState.[creature].Group
+                    then []
                     else
                         let dist = 
                             distance 
@@ -1205,13 +1210,19 @@ module TestSample =
         goblin,
         { North = 25; West = 25 } 
 
+    let creature3 = 
+        CreatureID 3, 
+        GroupID 2,
+        goblin,
+        { North = 30; West = 25 } 
+
     let map = {
         Width = 40
         Height = 40
         }
 
     let world =
-        (map, [ creature1; creature2 ])
+        (map, [ creature1; creature2; creature3 ])
         |> GlobalState.Initialize 
 
 
