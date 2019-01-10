@@ -1,7 +1,5 @@
 namespace MonsterVault
 
-[<Measure>]type ft
-
 [<AutoOpen>]
 module DiceRolls = 
 
@@ -88,7 +86,10 @@ module Abilities =
         |> score abilities
         |> scoreToModifier
 
+[<AutoOpen>]
 module Space = 
+
+    [<Measure>]type ft
 
     type Direction = 
         | N
@@ -220,36 +221,15 @@ module Weapons =
         | Medium
         | Heavy 
 
-    type Stats = {
-        Proficiency: Proficiency
-        Weight: Weight
-        }
-
     type Weapon = {
         Name: string
-        Stats: Stats
+        Proficiency: Proficiency
+        Weight: Weight
         Attacks: Attacks
-        }
-
-[<RequireQualifiedAccess>]
-module Creature = 
-
-    open Weapons
-    open Abilities
-
-    type Statistics = {
-        Abilities: Scores
-        ProficiencyBonus: int
-        Movement: int<ft>
-        HitPoints: int
-        ArmorClass: int
-        Attacks: List<Weapon> 
-        WeaponsProficiency: Weapons.Proficiency
         }
 
 module Attacks = 
 
-    open Abilities
     open Weapons
 
     type AttackType = 
@@ -260,7 +240,7 @@ module Attacks =
         | Melee of int<ft>
         | Ranged of Ranged.Range
 
-    type Statistics = {
+    type Attack = {
         Weapon: string
         Grip: Grip
         Type: AttackType
@@ -269,7 +249,7 @@ module Attacks =
         Damage: Roll
         }
 
-    let damage ac (attack: Statistics) =
+    let damage ac (attack: Attack) =
         let baseAttackRoll = 1 * d20 |> Roll.roll
         match baseAttackRoll with
         | 1 -> None // critical fail
@@ -288,90 +268,9 @@ module Attacks =
                 |> Roll.roll
                 |> Some
 
-    let abilityBonus (stats: Creature.Statistics) (weapon: Weapon) =
-        
-        let finesse = 
-            match weapon.Attacks with
-            | Attacks.Melee(info) -> info.Finesse
-            | Attacks.Thrown(info) -> info.MeleeAttacks.Finesse
-            | Attacks.Ranged(_) -> false
+module Combat =
 
-        match finesse with
-        | true ->  [ STR; DEX ] 
-        | false -> 
-            match weapon.Attacks with
-            | Attacks.Melee(_) -> [ STR]
-            | Attacks.Ranged(_) -> [ DEX ]
-            | Attacks.Thrown(_) -> [ STR ]
-        |> Seq.maxBy (modifier stats.Abilities)
-        |> modifier stats.Abilities
-
-    let proficiencyBonus (stats: Creature.Statistics) (weapon: Weapon) =
-                
-        match (weapon.Stats.Proficiency, stats.WeaponsProficiency) with
-        | Martial, Simple -> 0
-        | _ -> stats.ProficiencyBonus
-
-    let using (weapon: Weapon) (stats: Creature.Statistics) =
-
-        let hitBonus = abilityBonus stats weapon + proficiencyBonus stats weapon  
-        let damageBonus = abilityBonus stats weapon
-
-        let meleeAttacks (attacks: Melee.Attacks) = 
-            match attacks.Handling with
-            | Melee.Limited(info) -> 
-                {   
-                    Weapon = weapon.Name
-                    Type = AttackType.Melee
-                    HitBonus = hitBonus
-                    Grip = info.Grip
-                    Damage = info.Damage + damageBonus
-                    Reach = attacks.Reach |> Melee   
-                }
-                |> List.singleton
-            | Melee.Versatile(info) ->
-                [
-                    {
-                        Weapon = weapon.Name
-                        Type = AttackType.Melee
-                        HitBonus = hitBonus
-                        Grip = SingleHanded
-                        Damage = info.SingleHandedDamage + damageBonus
-                        Reach = attacks.Reach |> Melee   
-                    }
-                    {
-                        Weapon = weapon.Name
-                        Type = AttackType.Melee
-                        HitBonus = hitBonus
-                        Grip = TwoHanded
-                        Damage = info.TwoHandedDamage + damageBonus
-                        Reach = attacks.Reach |> Melee   
-                    }
-                ]
-
-        let rangedAttacks (info: Ranged.Attacks) = 
-            {
-                Weapon = weapon.Name
-                Type = AttackType.Ranged
-                HitBonus = hitBonus
-                Grip = info.Usage.Grip
-                Damage = info.Usage.Damage + damageBonus
-                Reach = info.Range |> Ranged
-            }
-            |> List.singleton
-
-        match weapon.Attacks with
-        | Weapons.Melee(info) -> meleeAttacks info
-        | Weapons.Ranged(info) -> rangedAttacks info
-        | Weapons.Thrown(info) -> 
-            [
-                yield! info.MeleeAttacks |> meleeAttacks
-                yield! info.RangedAttacks |> rangedAttacks
-            ]    
-
-module Domain =
-
-    open Space
+    open Attacks
 
     type CreatureID = | CreatureID of int
     type GroupID = | GroupID of int
@@ -384,7 +283,7 @@ module Domain =
         | Ongoing 
         | Finished of CombatOutcome
 
-    type TurnState = {
+    type Turn = {
         Creature: CreatureID
         MovementLeft: int<ft>
         HasTakenAction: bool
@@ -392,6 +291,100 @@ module Domain =
 
     [<RequireQualifiedAccess>]
     module Creature = 
+
+        open Weapons
+        open Abilities
+
+        type Statistics = {
+            Abilities: Scores
+            ProficiencyBonus: int
+            Movement: int<ft>
+            HitPoints: int
+            ArmorClass: int
+            Weapons: List<Weapon> 
+            WeaponsProficiency: Weapons.Proficiency
+            }
+
+        let abilityBonus (stats: Statistics) (weapon: Weapon) =
+            
+            let finesse = 
+                match weapon.Attacks with
+                | Attacks.Melee(info) -> info.Finesse
+                | Attacks.Thrown(info) -> info.MeleeAttacks.Finesse
+                | Attacks.Ranged(_) -> false
+
+            match finesse with
+            | true ->  [ STR; DEX ] 
+            | false -> 
+                match weapon.Attacks with
+                | Attacks.Melee(_) -> [ STR]
+                | Attacks.Ranged(_) -> [ DEX ]
+                | Attacks.Thrown(_) -> [ STR ]
+            |> Seq.maxBy (modifier stats.Abilities)
+            |> modifier stats.Abilities
+
+        let proficiencyBonus (stats: Statistics) (weapon: Weapon) =
+                    
+            match (weapon.Proficiency, stats.WeaponsProficiency) with
+            | Martial, Simple -> 0
+            | _ -> stats.ProficiencyBonus
+
+        let using (weapon: Weapon) (stats: Statistics) =
+
+            let hitBonus = abilityBonus stats weapon + proficiencyBonus stats weapon  
+            let damageBonus = abilityBonus stats weapon
+
+            let meleeAttacks (attacks: Melee.Attacks) = 
+                match attacks.Handling with
+                | Melee.Limited(info) -> 
+                    {   
+                        Weapon = weapon.Name
+                        Type = AttackType.Melee
+                        HitBonus = hitBonus
+                        Grip = info.Grip
+                        Damage = info.Damage + damageBonus
+                        Reach = attacks.Reach |> Reach.Melee   
+                    }
+                    |> List.singleton
+                | Melee.Versatile(info) ->
+                    [
+                        {
+                            Weapon = weapon.Name
+                            Type = AttackType.Melee
+                            HitBonus = hitBonus
+                            Grip = SingleHanded
+                            Damage = info.SingleHandedDamage + damageBonus
+                            Reach = attacks.Reach |> Reach.Melee   
+                        }
+                        {
+                            Weapon = weapon.Name
+                            Type = AttackType.Melee
+                            HitBonus = hitBonus
+                            Grip = TwoHanded
+                            Damage = info.TwoHandedDamage + damageBonus
+                            Reach = attacks.Reach |> Reach.Melee   
+                        }
+                    ]
+
+            let rangedAttacks (info: Ranged.Attacks) = 
+                {
+                    Weapon = weapon.Name
+                    Type = AttackType.Ranged
+                    HitBonus = hitBonus
+                    Grip = info.Usage.Grip
+                    Damage = info.Usage.Damage + damageBonus
+                    Reach = info.Range |> Reach.Ranged
+                }
+                |> List.singleton
+
+            match weapon.Attacks with
+            | Weapons.Melee(info) -> meleeAttacks info
+            | Weapons.Ranged(info) -> rangedAttacks info
+            | Weapons.Thrown(info) -> 
+                [
+                    yield! info.MeleeAttacks |> meleeAttacks
+                    yield! info.RangedAttacks |> rangedAttacks
+                ]
 
         type State = {
             HasTakenReaction: bool
@@ -406,7 +399,7 @@ module Domain =
             member this.CanReact =
                 this.CanAct && (not this.HasTakenReaction)   
        
-        let initialize (stats: Creature.Statistics, group: GroupID, pos: Position) =
+        let initialize (stats: Statistics, group: GroupID, pos: Position) =
             {
                 HitPoints = stats.HitPoints
                 Group = group
@@ -423,7 +416,7 @@ module Domain =
     type GlobalState = {
         BattleMap: BattleMap
         Initiative: CreatureID list
-        Turn: Option<TurnState>
+        Turn: Option<Turn>
         CreatureState: Map<CreatureID, Creature.State>
         Statistics: Map<CreatureID, Creature.Statistics>
         }
@@ -543,7 +536,7 @@ module Domain =
 
         type Action =
             | Move of Direction
-            | Attack of (CreatureID * Attacks.Statistics)
+            | Attack of (CreatureID * Attack)
 
         type ActionTaken =
             | FinishTurn 
@@ -642,8 +635,8 @@ module Domain =
                         // every possible attack
                         let attackerStats = state.Statistics.[creature]
                         let attacks = 
-                            state.Statistics.[creature].Attacks
-                            |> List.collect (fun w -> Attacks.using w attackerStats)                          
+                            attackerStats.Weapons
+                            |> List.collect (fun w -> Creature.using w attackerStats)                          
                         yield!
                             state.Initiative
                             |> List.filter (fun target -> target <> creature)
@@ -663,8 +656,8 @@ module Domain =
     module Reactions = 
 
         type Reaction =
-            | OpportunityAttack of (CreatureID * Attacks.Statistics)
-            | Riposte of (CreatureID * Attacks.Statistics)
+            | OpportunityAttack of (CreatureID * Attack)
+            | Riposte of (CreatureID * Attack)
 
         type ReactionTaken = 
             | Pass 
@@ -691,10 +684,10 @@ module Domain =
                             (globalState.CreatureState.[trigger].Position |> move dir)
                             globalState.CreatureState.[creature].Position
                     
-                    let weapons = globalState.Statistics.[creature].Attacks
                     let attackerStats = globalState.Statistics.[creature]
+                    let weapons = attackerStats.Weapons
                     weapons 
-                    |> List.collect (fun w -> Attacks.using w attackerStats)
+                    |> List.collect (fun w -> Creature.using w attackerStats)
                     |> List.filter (fun attack -> attack.Type = Attacks.Melee)
                     |> List.filter (fun attack -> 
                         match attack.Reach with 
@@ -723,10 +716,10 @@ module Domain =
                                 globalState.CreatureState.[trigger].Position 
                                 globalState.CreatureState.[creature].Position
                         
-                        let weapons = globalState.Statistics.[creature].Attacks
                         let attackerStats = globalState.Statistics.[creature]
+                        let weapons = attackerStats.Weapons
                         weapons 
-                        |> List.collect (fun w -> Attacks.using w attackerStats)
+                        |> List.collect (fun w -> Creature.using w attackerStats)
                         |> List.filter (fun attack -> attack.Type = Attacks.Melee)
                         |> List.filter (fun attack -> 
                             match attack.Reach with 
@@ -1132,14 +1125,12 @@ module TestSample =
 
     open Space
     open Weapons
-    open Domain
+    open Combat
 
     let scimitar = {
         Name = "scimitar"
-        Stats = {
-            Proficiency = Martial
-            Weight = Light
-            }
+        Proficiency = Martial
+        Weight = Light
         Attacks = 
             Melee {
                 Handling = Melee.Limited { Grip = SingleHanded; Damage = 1 * d6 }
@@ -1150,10 +1141,8 @@ module TestSample =
 
     let shortbow = { 
         Name = "shortbow"
-        Stats = {
-            Proficiency = Simple
-            Weight = Medium
-            }
+        Proficiency = Simple
+        Weight = Medium
         Attacks = 
             Ranged {
                 Range = { Short = 80<ft>; Long = 320<ft> }
@@ -1163,10 +1152,8 @@ module TestSample =
 
     let spear = {
         Name = "spear"
-        Stats = {
-            Proficiency = Simple
-            Weight = Medium
-            }
+        Proficiency = Simple
+        Weight = Medium
         Attacks = 
             Thrown {
                 Melee = 5<ft>
@@ -1195,7 +1182,7 @@ module TestSample =
             Creature.Movement = 30<ft>
             Creature.ArmorClass = 15
             Creature.WeaponsProficiency = Weapons.Martial
-            Creature.Attacks = [ scimitar; shortbow ]
+            Creature.Weapons = [ scimitar; shortbow ]
         }
 
     let creature1 = 

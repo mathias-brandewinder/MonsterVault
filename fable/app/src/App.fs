@@ -6,9 +6,9 @@ module App =
     open Elmish.React
     open Fable.Helpers.React
     open Fable.Helpers.React.Props
-    open MonsterVault.Domain
-    open MonsterVault.Domain.Actions
-    open MonsterVault.Domain.Reactions
+    open MonsterVault.Combat
+    open MonsterVault.Combat.Actions
+    open MonsterVault.Combat.Reactions
 
     // MODEL
 

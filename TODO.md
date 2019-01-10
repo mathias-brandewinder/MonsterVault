@@ -1,19 +1,16 @@
 # TODO / ISSUES
 
-- display of events in journal (ex: result of an attack)
+- Weapons/attacks that are "natural", ex Claw
 - weapon equipped, equip, sheath, drop
-- representation of allies and enemies
 - handling of creatures leaving battle map
 - representing Advantage, Disadvantage Roll
 - crossing creature space and size 
 - Multi Attacks: 1 Action, 2 Attacks
-- out-of-turn activities, ex: opportunity attack
+- outcome for actions such as Dash or Dodge
 
 ## Backlog
 
-- Weapons/attacks that are "natural", ex Claw
 - Weapon proficiency bonus and Hit Dice
-- Proficiency, Light/Heavy weapons
 - Figure out nicer template modification when armor changes
 - Find list of Monster Tags
 ? Is there an equivalent to Proficiency for Monsters
@@ -23,3 +20,7 @@
 ? Could rolls support expressions such as 6 * (d10 + 2)
 x Ability scores: how to handle cases like racial traits, where an Ability Score is increased from the original roll?
 x Ability scores: how to denote Ability Score increased from the original roll for a "boss"?
+x Proficiency, Light/Heavy weapons
+x display of events in journal (ex: result of an attack)
+x representation of allies and enemies
+x out-of-turn activities, ex: opportunity attack
