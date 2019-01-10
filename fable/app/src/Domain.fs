@@ -329,6 +329,7 @@ module Combat =
             | Martial, Simple -> 0
             | _ -> stats.ProficiencyBonus
 
+        
         let using (weapon: Weapon) (stats: Statistics) =
 
             let hitBonus = abilityBonus stats weapon + proficiencyBonus stats weapon  
@@ -1185,6 +1186,28 @@ module TestSample =
             Creature.Weapons = [ scimitar; shortbow ]
         }
 
+    let wolf : Creature.Statistics = 
+        let stats: Abilities.Scores = {
+            STR = 12
+            DEX = 15
+            CON = 12
+            INT = 3
+            WIS = 12
+            CHA = 6
+            }
+        { 
+            Creature.Abilities = stats
+            Creature.ProficiencyBonus = 2
+            Creature.Statistics.HitPoints = 11
+            Creature.Movement = 40<ft>
+            Creature.ArmorClass = 13
+            Creature.WeaponsProficiency = Weapons.Simple
+            Creature.Weapons = [ ]
+        }
+
+
+
+
     let creature1 = 
         CreatureID 1, 
         GroupID 1,
@@ -1193,15 +1216,21 @@ module TestSample =
         
     let creature2 = 
         CreatureID 2, 
-        GroupID 2,
+        GroupID 1,
         goblin,
         { North = 25; West = 25 } 
 
     let creature3 = 
         CreatureID 3, 
         GroupID 2,
-        goblin,
+        wolf,
         { North = 30; West = 25 } 
+
+    let creature4 = 
+        CreatureID 4, 
+        GroupID 2,
+        wolf,
+        { North = 30; West = 28 } 
 
     let map = {
         Width = 40
@@ -1209,7 +1238,7 @@ module TestSample =
         }
 
     let world =
-        (map, [ creature1; creature2; creature3 ])
+        (map, [ creature1; creature2; creature3; creature4 ])
         |> GlobalState.Initialize 
 
 

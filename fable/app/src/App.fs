@@ -84,6 +84,23 @@ module App =
             SVGAttr.Fill color 
           ] [ ]
 
+    let tileHighlight (model: Model) (x, y) color =
+        let map = model.GlobalState.BattleMap
+        let width = map.Width
+        let height = map.Height
+        rect [ 
+            SVGAttr.X (tileSize * (width - x - 1))
+            SVGAttr.Y (tileSize * (height - y - 1))
+            SVGAttr.Width (tileSize - 2)
+            SVGAttr.Height (tileSize - 2)
+            SVGAttr.Rx 2
+            SVGAttr.Ry 2
+            SVGAttr.StrokeWidth 2
+            SVGAttr.Stroke color 
+            SVGAttr.Fill "none"
+          ] [ ]
+
+
     let battleMap (model: Model) dispatch =
 
         let map = model.GlobalState.BattleMap
@@ -103,10 +120,16 @@ module App =
                 for creature in model.GlobalState.CreatureState do
                     let state = creature.Value
                     let color = 
-                        if creature.Key = model.GlobalState.Turn.Value.Creature
-                        then "Red"
-                        else "Orange"
+                            if state.Group = GroupID 1 then "Orange"
+                            else "Blue"
+                            
                     yield tileAt model (state.Position.West, state.Position.North) color
+                    
+                    if creature.Key = model.GlobalState.Turn.Value.Creature
+                    then 
+                        yield tileHighlight model (state.Position.West, state.Position.North) "Red"
+                     
+
             ]
 
     let panelStyle = Style [ Padding 5; MarginBottom 5; MarginLeft 5; BorderRadius 5; BackgroundColor "LightGray" ]
