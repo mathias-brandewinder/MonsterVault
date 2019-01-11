@@ -240,9 +240,13 @@ module Attacks =
         | Melee of int<ft>
         | Ranged of Ranged.Range
 
+    type Usage = 
+        | Natural
+        | Equipped of Grip
+
     type Attack = {
         Weapon: string
-        Grip: Grip
+        Usage: Usage
         Type: AttackType
         Reach: Reach
         HitBonus: int
@@ -338,7 +342,7 @@ module Combat =
                             Weapon = weapon.Name
                             Type = AttackType.Melee
                             HitBonus = hitBonus
-                            Grip = info.Grip
+                            Usage = Equipped info.Grip
                             Damage = info.Damage + damageBonus
                             Reach = attacks.Reach |> Reach.Melee   
                         }
@@ -349,7 +353,7 @@ module Combat =
                                 Weapon = weapon.Name
                                 Type = AttackType.Melee
                                 HitBonus = hitBonus
-                                Grip = SingleHanded
+                                Usage = Equipped SingleHanded
                                 Damage = info.SingleHandedDamage + damageBonus
                                 Reach = attacks.Reach |> Reach.Melee   
                             }
@@ -357,7 +361,7 @@ module Combat =
                                 Weapon = weapon.Name
                                 Type = AttackType.Melee
                                 HitBonus = hitBonus
-                                Grip = TwoHanded
+                                Usage = Equipped TwoHanded
                                 Damage = info.TwoHandedDamage + damageBonus
                                 Reach = attacks.Reach |> Reach.Melee   
                             }
@@ -368,7 +372,7 @@ module Combat =
                         Weapon = weapon.Name
                         Type = AttackType.Ranged
                         HitBonus = hitBonus
-                        Grip = info.Usage.Grip
+                        Usage = Equipped info.Usage.Grip
                         Damage = info.Usage.Damage + damageBonus
                         Reach = info.Range |> Reach.Ranged
                     }
@@ -1234,7 +1238,7 @@ module TestSample =
             Creature.Attacks = [
                     {
                         Weapon = "bite"
-                        Grip = SingleHanded
+                        Usage = Attacks.Natural
                         Type = Attacks.AttackType.Melee
                         Reach = Attacks.Reach.Melee 5<ft>
                         HitBonus = 4
