@@ -302,90 +302,91 @@ module Combat =
             HitPoints: int
             ArmorClass: int
             Weapons: List<Weapon> 
+            Attacks: List<Attack>
             WeaponsProficiency: Weapons.Proficiency
-            }
+            }  
+            with
+            member this.abilityBonus (weapon: Weapon) =           
+                let finesse = 
+                    match weapon.Attacks with
+                    | Attacks.Melee(info) -> info.Finesse
+                    | Attacks.Thrown(info) -> info.MeleeAttacks.Finesse
+                    | Attacks.Ranged(_) -> false
 
-        let abilityBonus (stats: Statistics) (weapon: Weapon) =
-            
-            let finesse = 
-                match weapon.Attacks with
-                | Attacks.Melee(info) -> info.Finesse
-                | Attacks.Thrown(info) -> info.MeleeAttacks.Finesse
-                | Attacks.Ranged(_) -> false
+                match finesse with
+                | true ->  [ STR; DEX ] 
+                | false -> 
+                    match weapon.Attacks with
+                    | Attacks.Melee(_) -> [ STR]
+                    | Attacks.Ranged(_) -> [ DEX ]
+                    | Attacks.Thrown(_) -> [ STR ]
+                |> Seq.maxBy (modifier this.Abilities)
+                |> modifier this.Abilities
+            member this.proficiencyBonus (weapon: Weapon) =                
+                match (weapon.Proficiency, this.WeaponsProficiency) with
+                | Martial, Simple -> 0
+                | _ -> this.ProficiencyBonus
+            member this.AttacksWith (weapon: Weapon) =
 
-            match finesse with
-            | true ->  [ STR; DEX ] 
-            | false -> 
-                match weapon.Attacks with
-                | Attacks.Melee(_) -> [ STR]
-                | Attacks.Ranged(_) -> [ DEX ]
-                | Attacks.Thrown(_) -> [ STR ]
-            |> Seq.maxBy (modifier stats.Abilities)
-            |> modifier stats.Abilities
+                let hitBonus = this.abilityBonus weapon + this.proficiencyBonus weapon  
+                let damageBonus = this.abilityBonus weapon
 
-        let proficiencyBonus (stats: Statistics) (weapon: Weapon) =
-                    
-            match (weapon.Proficiency, stats.WeaponsProficiency) with
-            | Martial, Simple -> 0
-            | _ -> stats.ProficiencyBonus
+                let meleeAttacks (attacks: Melee.Attacks) = 
+                    match attacks.Handling with
+                    | Melee.Limited(info) -> 
+                        {   
+                            Weapon = weapon.Name
+                            Type = AttackType.Melee
+                            HitBonus = hitBonus
+                            Grip = info.Grip
+                            Damage = info.Damage + damageBonus
+                            Reach = attacks.Reach |> Reach.Melee   
+                        }
+                        |> List.singleton
+                    | Melee.Versatile(info) ->
+                        [
+                            {
+                                Weapon = weapon.Name
+                                Type = AttackType.Melee
+                                HitBonus = hitBonus
+                                Grip = SingleHanded
+                                Damage = info.SingleHandedDamage + damageBonus
+                                Reach = attacks.Reach |> Reach.Melee   
+                            }
+                            {
+                                Weapon = weapon.Name
+                                Type = AttackType.Melee
+                                HitBonus = hitBonus
+                                Grip = TwoHanded
+                                Damage = info.TwoHandedDamage + damageBonus
+                                Reach = attacks.Reach |> Reach.Melee   
+                            }
+                        ]
 
-        
-        let using (weapon: Weapon) (stats: Statistics) =
-
-            let hitBonus = abilityBonus stats weapon + proficiencyBonus stats weapon  
-            let damageBonus = abilityBonus stats weapon
-
-            let meleeAttacks (attacks: Melee.Attacks) = 
-                match attacks.Handling with
-                | Melee.Limited(info) -> 
-                    {   
+                let rangedAttacks (info: Ranged.Attacks) = 
+                    {
                         Weapon = weapon.Name
-                        Type = AttackType.Melee
+                        Type = AttackType.Ranged
                         HitBonus = hitBonus
-                        Grip = info.Grip
-                        Damage = info.Damage + damageBonus
-                        Reach = attacks.Reach |> Reach.Melee   
+                        Grip = info.Usage.Grip
+                        Damage = info.Usage.Damage + damageBonus
+                        Reach = info.Range |> Reach.Ranged
                     }
                     |> List.singleton
-                | Melee.Versatile(info) ->
+
+                match weapon.Attacks with
+                | Weapons.Melee(info) -> meleeAttacks info
+                | Weapons.Ranged(info) -> rangedAttacks info
+                | Weapons.Thrown(info) -> 
                     [
-                        {
-                            Weapon = weapon.Name
-                            Type = AttackType.Melee
-                            HitBonus = hitBonus
-                            Grip = SingleHanded
-                            Damage = info.SingleHandedDamage + damageBonus
-                            Reach = attacks.Reach |> Reach.Melee   
-                        }
-                        {
-                            Weapon = weapon.Name
-                            Type = AttackType.Melee
-                            HitBonus = hitBonus
-                            Grip = TwoHanded
-                            Damage = info.TwoHandedDamage + damageBonus
-                            Reach = attacks.Reach |> Reach.Melee   
-                        }
+                        yield! info.MeleeAttacks |> meleeAttacks
+                        yield! info.RangedAttacks |> rangedAttacks
                     ]
 
-            let rangedAttacks (info: Ranged.Attacks) = 
-                {
-                    Weapon = weapon.Name
-                    Type = AttackType.Ranged
-                    HitBonus = hitBonus
-                    Grip = info.Usage.Grip
-                    Damage = info.Usage.Damage + damageBonus
-                    Reach = info.Range |> Reach.Ranged
-                }
-                |> List.singleton
-
-            match weapon.Attacks with
-            | Weapons.Melee(info) -> meleeAttacks info
-            | Weapons.Ranged(info) -> rangedAttacks info
-            | Weapons.Thrown(info) -> 
-                [
-                    yield! info.MeleeAttacks |> meleeAttacks
-                    yield! info.RangedAttacks |> rangedAttacks
-                ]
+            member this.AllAttacks () =
+                this.Weapons 
+                |> List.collect (fun weapon -> this.AttacksWith weapon)
+                |> List.append (this.Attacks)
 
         type State = {
             HasTakenReaction: bool
@@ -635,9 +636,7 @@ module Combat =
 
                         // every possible attack
                         let attackerStats = state.Statistics.[creature]
-                        let attacks = 
-                            attackerStats.Weapons
-                            |> List.collect (fun w -> Creature.using w attackerStats)                          
+                        let attacks = attackerStats.AllAttacks ()
                         yield!
                             state.Initiative
                             |> List.filter (fun target -> target <> creature)
@@ -686,9 +685,7 @@ module Combat =
                             globalState.CreatureState.[creature].Position
                     
                     let attackerStats = globalState.Statistics.[creature]
-                    let weapons = attackerStats.Weapons
-                    weapons 
-                    |> List.collect (fun w -> Creature.using w attackerStats)
+                    attackerStats.AllAttacks ()
                     |> List.filter (fun attack -> attack.Type = Attacks.Melee)
                     |> List.filter (fun attack -> 
                         match attack.Reach with 
@@ -718,9 +715,7 @@ module Combat =
                                 globalState.CreatureState.[creature].Position
                         
                         let attackerStats = globalState.Statistics.[creature]
-                        let weapons = attackerStats.Weapons
-                        weapons 
-                        |> List.collect (fun w -> Creature.using w attackerStats)
+                        attackerStats.AllAttacks ()
                         |> List.filter (fun attack -> attack.Type = Attacks.Melee)
                         |> List.filter (fun attack -> 
                             match attack.Reach with 
@@ -1184,6 +1179,7 @@ module TestSample =
             Creature.ArmorClass = 15
             Creature.WeaponsProficiency = Weapons.Martial
             Creature.Weapons = [ scimitar; shortbow ]
+            Creature.Attacks = [ ]
         }
 
     let wolf : Creature.Statistics = 
@@ -1203,10 +1199,17 @@ module TestSample =
             Creature.ArmorClass = 13
             Creature.WeaponsProficiency = Weapons.Simple
             Creature.Weapons = [ ]
+            Creature.Attacks = [
+                    {
+                        Weapon = "bite"
+                        Grip = SingleHanded
+                        Type = Attacks.AttackType.Melee
+                        Reach = Attacks.Reach.Melee 5<ft>
+                        HitBonus = 4
+                        Damage = 2 * d4 + 2
+                    }
+                ]
         }
-
-
-
 
     let creature1 = 
         CreatureID 1, 
