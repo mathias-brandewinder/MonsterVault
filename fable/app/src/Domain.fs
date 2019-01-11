@@ -475,6 +475,7 @@ module Combat =
         | Move of CreatureID * Direction
         | SuccessfulAttack of CreatureID * CreatureID * int
         | FailedAttack of CreatureID * CreatureID
+        | Dash of CreatureID * int<ft>
         with 
         static member applyEffect (outcome: Outcome) (state: GlobalState) =
             match outcome with
@@ -505,6 +506,15 @@ module Combat =
                         state.CreatureState
                         |> Map.add target updatedState
                 }
+            | Outcome.Dash (creature, distance) ->
+                let currentTurn = state.Turn.Value
+                { state with
+                    Turn = 
+                        { currentTurn with 
+                            MovementLeft = currentTurn.MovementLeft + distance
+                        }
+                        |> Some
+                }
         static member updateAction (outcome: Outcome) (state: GlobalState) =
             match outcome with
             | Outcome.Move _ -> state         
@@ -516,6 +526,11 @@ module Combat =
                 { state with 
                     Turn = Some { state.Turn.Value with HasTakenAction = true } 
                 }
+            | Outcome.Dash (creature, outcome) ->
+                { state with 
+                    Turn = Some { state.Turn.Value with HasTakenAction = true } 
+                }
+
         static member updateReaction (outcome: Outcome) (state: GlobalState) =
             match outcome with
             | Outcome.Move _ -> failwith "Error: move is not a possible reaction"
@@ -533,12 +548,14 @@ module Combat =
                         state.CreatureState
                         |> Map.add source { attackerState with HasTakenReaction = true } 
                 }
+            | Outcome.Dash _ -> failwith "Error: dash is not a possible reaction"
 
     module Actions = 
 
         type Action =
             | Move of Direction
             | Attack of (CreatureID * Attack)
+            | Dash
 
         type ActionTaken =
             | FinishTurn 
@@ -634,6 +651,7 @@ module Combat =
                             [ N; NW; W; SW; S; SE; E; NE ]
                             |> List.map Move 
 
+                        yield Dash
                         // every possible attack
                         let attackerStats = state.Statistics.[creature]
                         let attacks = attackerStats.AllAttacks ()
@@ -694,6 +712,7 @@ module Combat =
                     |> List.map (fun attack -> OpportunityAttack(trigger, attack))
                 | SuccessfulAttack _ -> [] 
                 | FailedAttack _ -> []
+                | Dash _ -> []
 
         let riposte (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             if creature = trigger
@@ -723,6 +742,7 @@ module Combat =
                             | Attacks.Reach.Ranged _ -> false)
                         |> List.map (fun attack -> Riposte (origin, attack))
                 | FailedAttack _ -> []
+                | Dash _ -> []
 
         let alternatives (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             [
@@ -862,6 +882,9 @@ module Combat =
                     match Attacks.damage ac attack with
                     | None -> Outcome.FailedAttack (creature, target)
                     | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
+                | Action.Dash ->
+                    let movement = globalState.Statistics.[creature].Movement
+                    Outcome.Dash (creature, movement)
             let reactions = 
                 globalState.Initiative
                 |> List.choose (
