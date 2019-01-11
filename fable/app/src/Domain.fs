@@ -472,22 +472,27 @@ module Combat =
                 | _ -> Ongoing
                 
     type Outcome =
-        | Move of CreatureID * Direction
+        | Move of CreatureID * Direction * int<ft>
         | SuccessfulAttack of CreatureID * CreatureID * int
         | FailedAttack of CreatureID * CreatureID
         | Dash of CreatureID * int<ft>
         with 
         static member applyEffect (outcome: Outcome) (state: GlobalState) =
             match outcome with
-            | Outcome.Move (creature, direction) ->                  
+            | Outcome.Move (creature, direction, cost) ->                  
                 let currentTurn = state.Turn.Value
                 let currentState = state.CreatureState.[creature]
-                let updatedState = { currentState with Position = currentState.Position |> move direction }
+                let updatedState = 
+                    { currentState with 
+                        Position = currentState.Position |> move direction 
+                    }
                 { state with
-                    CreatureState = state.CreatureState |> Map.add creature updatedState 
+                    CreatureState = 
+                        state.CreatureState 
+                        |> Map.add creature updatedState 
                     Turn = 
                         { currentTurn with 
-                            MovementLeft = currentTurn.MovementLeft - 5<ft> 
+                            MovementLeft = currentTurn.MovementLeft - cost
                         }
                         |> Some
                 }
@@ -690,7 +695,7 @@ module Combat =
             then []
             else
                 match outcome with
-                | Move (_, dir) -> 
+                | Move (_, dir, _) -> 
                     // do we have melee attacks that we can use within range,
                     // and are we in range before, out of range after
                     let distanceBefore = 
@@ -849,9 +854,10 @@ module Combat =
                     |> List.findIndex (fun x -> x = turn.Creature)
                     |> fun index -> (index + 1) % (globalState.Initiative.Length)
                     |> fun index -> globalState.Initiative.Item index
+            
                 let nextTurn = {
                     Creature = nextCreatureUp
-                    MovementLeft = 30<ft>                
+                    MovementLeft = globalState.Statistics.[nextCreatureUp].Movement                
                     HasTakenAction = false
                     }        
                 let nextCreatureState = 
@@ -876,7 +882,10 @@ module Combat =
         | AttemptAction (creature, action) -> 
             let outcome = 
                 match action with
-                | Action.Move dir -> Outcome.Move (creature, dir)
+                | Action.Move dir -> 
+                    let position = globalState.CreatureState.[creature].Position
+                    let cost = movementCost globalState position dir
+                    Outcome.Move (creature, dir, cost)
                 | Attack (target, attack) -> 
                     let ac = globalState.Statistics.[target].ArmorClass
                     match Attacks.damage ac attack with
