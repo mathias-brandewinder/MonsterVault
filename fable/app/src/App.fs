@@ -1,4 +1,5 @@
 namespace MonsterVault
+open AutomatedDecision
 
 module App =
 
@@ -23,53 +24,34 @@ module App =
         | CreatureAction of (CreatureID * ActionTaken)
         | CreatureReaction of (CreatureID * ReactionTaken)
 
-    type DecisionNeeded = 
-        | Action of ActionNeeded
-        | Reaction of ReactionNeeded
-
-    type DecisionInformation = {
-        Info: GlobalState
-        DecisionNeeded: DecisionNeeded
-        }
-
-    let agent =
-
-        let rng = System.Random ()
-    
+    let agent (strategy: AutomatedDecision.Strategy) =    
         MailboxProcessor<DecisionInformation * (Msg -> unit)>.Start(
-          fun inbox ->
+            fun inbox ->
                 let rec loop () = 
                     async {
                         let! (info, dispatch) = inbox.Receive ()
                         do! Async.Sleep 100          
 
                         match info.DecisionNeeded with
-                        | Action action ->
-                            let len = 
-                                action.Alternatives 
-                                |> List.length
-                            let decision = 
-                                action.Alternatives
-                                |> List.item (rng.Next len)
-                            dispatch (CreatureAction (action.Creature, decision))
-                        | Reaction reaction ->
-                            let len = 
-                                reaction.Alternatives 
-                                |> List.length
-                            let decision = 
-                                reaction.Alternatives
-                                |> List.item (rng.Next len)
-                            dispatch (CreatureReaction (reaction.Creature, decision))
-
+                        | AutomatedDecision.Action action ->
+                            strategy.TakeAction action info.Info
+                            |> CreatureAction
+                            |> dispatch
+                        | AutomatedDecision.Reaction reaction ->
+                            RandomChoice.takeReaction reaction info.Info
+                            |> CreatureReaction
+                            |> dispatch
+            
                         return! loop ()
                     }
                 loop ()
-        )
+            )
 
     let decide = 
-      fun information ->
-        fun dispatch -> 
-          agent.Post (information, dispatch)
+        let decisionAgent = agent RandomChoice.strategy
+        fun information ->
+            fun dispatch -> 
+                decisionAgent.Post (information, dispatch)
 
     let init () = 
         let combat, machine = TestSample.initialized
@@ -78,7 +60,7 @@ module App =
             Machine = machine
             Journal = []
         },
-        Cmd.none
+        Cmd.ofMsg RestartCombat
 
     // UPDATE
     let update (msg: Msg) (model: Model) =
@@ -121,13 +103,13 @@ module App =
         | Machine.ActionNeeded action ->
             let info = { 
                 Info = updated.GlobalState
-                DecisionNeeded = Action action              
+                DecisionNeeded = AutomatedDecision.Action action              
                 }
             updated, Cmd.ofSub (decide info)
         | Machine.ReactionNeeded (reaction, _) ->
             let info = { 
                 Info = updated.GlobalState
-                DecisionNeeded = Reaction reaction              
+                DecisionNeeded = AutomatedDecision.Reaction reaction              
                 }
             updated, Cmd.ofSub (decide info)
         | _ ->
