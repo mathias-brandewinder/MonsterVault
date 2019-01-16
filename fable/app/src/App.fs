@@ -23,13 +23,62 @@ module App =
         | CreatureAction of (CreatureID * ActionTaken)
         | CreatureReaction of (CreatureID * ReactionTaken)
 
+    type DecisionNeeded = 
+        | Action of ActionNeeded
+        | Reaction of ReactionNeeded
+
+    type DecisionInformation = {
+        Info: GlobalState
+        DecisionNeeded: DecisionNeeded
+        }
+
+    let agent =
+
+        let rng = System.Random ()
+    
+        MailboxProcessor<DecisionInformation * (Msg -> unit)>.Start(
+          fun inbox ->
+                let rec loop () = 
+                    async {
+                        let! (info, dispatch) = inbox.Receive ()
+                        do! Async.Sleep 100          
+
+                        match info.DecisionNeeded with
+                        | Action action ->
+                            let len = 
+                                action.Alternatives 
+                                |> List.length
+                            let decision = 
+                                action.Alternatives
+                                |> List.item (rng.Next len)
+                            dispatch (CreatureAction (action.Creature, decision))
+                        | Reaction reaction ->
+                            let len = 
+                                reaction.Alternatives 
+                                |> List.length
+                            let decision = 
+                                reaction.Alternatives
+                                |> List.item (rng.Next len)
+                            dispatch (CreatureReaction (reaction.Creature, decision))
+
+                        return! loop ()
+                    }
+                loop ()
+        )
+
+    let decide = 
+      fun information ->
+        fun dispatch -> 
+          agent.Post (information, dispatch)
+
     let init () = 
         let combat, machine = TestSample.initialized
         {
             GlobalState = combat
             Machine = machine
             Journal = []
-        }
+        },
+        Cmd.none
 
     // UPDATE
     let update (msg: Msg) (model: Model) =
@@ -38,7 +87,8 @@ module App =
 
         let internalCommand = 
             match msg with 
-            | RestartCombat -> StartCombat (init >> fun x -> x.GlobalState, x.Machine)
+            | RestartCombat -> 
+                StartCombat (init >> fst >> fun x -> x.GlobalState, x.Machine) 
             | CreatureAction (creature, action) ->           
                 match machine with 
                 | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no action"
@@ -61,10 +111,27 @@ module App =
                         match reaction with 
                         | Pass -> Transition.PassReaction creature
                         | Reactions.Reaction(reaction) -> AttemptReaction (creature, reaction)
-
-        execute (globalState, machine, model.Journal) internalCommand 
-        |> fun (state, machine, journal) -> 
-            { GlobalState = state; Machine = machine; Journal = journal }
+        
+        let updated = 
+            execute (globalState, machine, model.Journal) internalCommand 
+            |> fun (state, machine, journal) -> 
+                { GlobalState = state; Machine = machine; Journal = journal }
+        
+        match updated.Machine with 
+        | Machine.ActionNeeded action ->
+            let info = { 
+                Info = updated.GlobalState
+                DecisionNeeded = Action action              
+                }
+            updated, Cmd.ofSub (decide info)
+        | Machine.ReactionNeeded (reaction, _) ->
+            let info = { 
+                Info = updated.GlobalState
+                DecisionNeeded = Reaction reaction              
+                }
+            updated, Cmd.ofSub (decide info)
+        | _ ->
+            updated, Cmd.none
 
     // VIEW (rendered with React)
 
@@ -189,7 +256,7 @@ module App =
             ]
 
     // App
-    Program.mkSimple init update view
+    Program.mkProgram init update view
     |> Program.withReact "elmish-app"
     |> Program.withConsoleTrace
     |> Program.run
