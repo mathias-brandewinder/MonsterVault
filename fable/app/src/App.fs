@@ -211,27 +211,27 @@ module App =
             ]
 
     let panelStyle = Style [ Padding 5; MarginBottom 5; MarginLeft 5; BorderRadius 5; BackgroundColor "LightGray" ]
+    let vignetteStyle = Style [ Padding 2 ]
 
     let state (model: Model) dispatch =
         let stats = model.GlobalState.Statistics
         let states = model.GlobalState.CreatureState
         let descriptionOf creatureID = 
             [
-                
-                stats.[creatureID].Description.ToUpperInvariant ()
-                sprintf "Hit points: %i/%i"
-                    states.[creatureID].HitPoints
-                    stats.[creatureID].HitPoints
-                sprintf "Dead: %b" states.[creatureID].Dead
-                sprintf "Reaction taken: %b" states.[creatureID].HasTakenReaction         
+                yield br []               
+                yield str (stats.[creatureID].Description)
+                yield br []
+                yield str (sprintf "Hit points: %i/%i" states.[creatureID].HitPoints stats.[creatureID].HitPoints)
+                yield br []
+                if states.[creatureID].Dead then yield (str "Dead")
+                if states.[creatureID].HasTakenReaction then yield (str "Reaction taken")         
             ]
-            |> String.concat " "
             
         div [ panelStyle ] 
             [ 
                 for creatureID in model.GlobalState.Initiative do
                     yield
-                        div [] [ str (descriptionOf creatureID) ]
+                        div [ vignetteStyle ] (descriptionOf creatureID)
             ]
 
     let message (msg: Msg) =
