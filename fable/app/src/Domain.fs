@@ -300,6 +300,7 @@ module Combat =
         open Abilities
 
         type Statistics = {
+            Description: string
             Abilities: Scores
             ProficiencyBonus: int
             Movement: int<ft>
@@ -427,16 +428,16 @@ module Combat =
         Statistics: Map<CreatureID, Creature.Statistics>
         }
         with
-        static member Initialize(map: BattleMap, creatures: (CreatureID * GroupID * Creature.Statistics * Position) list) =
+        static member Initialize(map: BattleMap, creatures: (GroupID * Creature.Statistics * Position) list) =
             let initiative = 
                 creatures 
-                |> List.map (fun (creatureID, _, _, _) -> creatureID)
+                |> List.mapi (fun i _ -> CreatureID i)
             let turn = 
                 match creatures with 
                 | [] -> None
-                | (creature, _, stats, _) :: _ ->
+                | (_, stats, _) :: _ ->
                     {
-                        Creature = creature 
+                        Creature = initiative |> List.head 
                         MovementLeft = stats.Movement
                         HasTakenAction = false
                     }
@@ -447,15 +448,15 @@ module Combat =
                 Turn = turn
                 CreatureState = 
                     creatures 
-                    |> List.map (fun (creatureId, group, stats, pos) -> 
-                        creatureId,
+                    |> List.mapi (fun index (group, stats, pos) -> 
+                        CreatureID index,
                         Creature.initialize (stats, group, pos)
                         ) 
                     |> Map.ofList 
                 Statistics = 
                     creatures 
-                    |> List.map (fun (creatureId, _, stats, _) -> 
-                        creatureId,
+                    |> List.mapi (fun index (_, stats, _) -> 
+                        CreatureID index,
                         stats
                         ) 
                     |> Map.ofList 
@@ -1207,7 +1208,8 @@ module TestSample =
             WIS = 8
             CHA = 8
             }
-        { 
+        {
+            Creature.Description = "goblin" 
             Creature.Abilities = stats
             Creature.ProficiencyBonus = 2
             Creature.Statistics.HitPoints = 7
@@ -1228,6 +1230,7 @@ module TestSample =
             CHA = 6
             }
         { 
+            Creature.Description = "wolf" 
             Creature.Abilities = stats
             Creature.ProficiencyBonus = 2
             Creature.Statistics.HitPoints = 11
@@ -1248,28 +1251,34 @@ module TestSample =
         }
 
     let creature1 = 
-        CreatureID 1, 
         GroupID 1,
         goblin,
         { North = 20; West = 20 } 
         
     let creature2 = 
-        CreatureID 2, 
         GroupID 1,
         goblin,
         { North = 25; West = 25 } 
 
     let creature3 = 
-        CreatureID 3, 
         GroupID 2,
         wolf,
         { North = 30; West = 25 } 
 
     let creature4 = 
-        CreatureID 4, 
         GroupID 2,
         wolf,
-        { North = 30; West = 28 } 
+        { North = 30; West = 27 } 
+
+    let creature5 = 
+        GroupID 2,
+        wolf,
+        { North = 30; West = 29 } 
+
+    let creature6 = 
+        GroupID 2,
+        wolf,
+        { North = 30; West = 31 } 
 
     let map = {
         Width = 40
@@ -1277,7 +1286,7 @@ module TestSample =
         }
 
     let world =
-        (map, [ creature1; creature2; creature3; creature4 ])
+        (map, [ creature1; creature2; creature3; creature4; creature5; creature6 ])
         |> GlobalState.Initialize 
 
 

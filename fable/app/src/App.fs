@@ -23,9 +23,9 @@ module App =
         | RestartCombat
         | CreatureAction of (CreatureID * ActionTaken)
         | CreatureReaction of (CreatureID * ReactionTaken)
-
+    
     let agent (strategy: AutomatedDecision.Strategy) =    
-        MailboxProcessor<DecisionInformation * (Msg -> unit)>.Start(
+        MailboxProcessor<DecisionInformation * Dispatch<Msg>>.Start(
             fun inbox ->
                 let rec loop () = 
                     async {
@@ -149,6 +149,33 @@ module App =
             SVGAttr.Fill "none"
           ] [ ]
 
+    let tileMarked (model: Model) (x, y) color =
+        let map = model.GlobalState.BattleMap
+        let width = map.Width
+        let height = map.Height
+        svg []
+            [
+            line 
+                [ 
+                    SVGAttr.X1 (tileSize * (width - x - 1))
+                    SVGAttr.Y1 (tileSize * (height - y - 1))
+                    SVGAttr.X2 (tileSize * (width - x) - 2)
+                    SVGAttr.Y2 (tileSize * (height - y) - 2)
+                    SVGAttr.StrokeWidth 2
+                    SVGAttr.Stroke color
+                ] 
+                []
+            line 
+                [ 
+                    SVGAttr.X1 (tileSize * (width - x - 1))
+                    SVGAttr.Y2 (tileSize * (height - y - 1))
+                    SVGAttr.X2 (tileSize * (width - x) - 2)
+                    SVGAttr.Y1 (tileSize * (height - y) - 2)
+                    SVGAttr.StrokeWidth 2
+                    SVGAttr.Stroke color
+                ] 
+                []                
+            ]
 
     let battleMap (model: Model) dispatch =
 
@@ -170,21 +197,42 @@ module App =
                     let state = creature.Value
                     let color = 
                             if state.Group = GroupID 1 then "Orange"
-                            else "Blue"
+                            else "RoyalBlue"
                             
                     yield tileAt model (state.Position.West, state.Position.North) color
                     
                     if creature.Key = model.GlobalState.Turn.Value.Creature
                     then 
                         yield tileHighlight model (state.Position.West, state.Position.North) "Red"
-                     
 
+                    if model.GlobalState.CreatureState.[creature.Key].Dead
+                    then 
+                        yield tileMarked model (state.Position.West, state.Position.North) "Black"
             ]
 
     let panelStyle = Style [ Padding 5; MarginBottom 5; MarginLeft 5; BorderRadius 5; BackgroundColor "LightGray" ]
 
     let state (model: Model) dispatch =
-        div [ panelStyle ] [ str (string (model.GlobalState.CreatureState)) ]
+        let stats = model.GlobalState.Statistics
+        let states = model.GlobalState.CreatureState
+        let descriptionOf creatureID = 
+            [
+                
+                stats.[creatureID].Description.ToUpperInvariant ()
+                sprintf "Hit points: %i/%i"
+                    states.[creatureID].HitPoints
+                    stats.[creatureID].HitPoints
+                sprintf "Dead: %b" states.[creatureID].Dead
+                sprintf "Reaction taken: %b" states.[creatureID].HasTakenReaction         
+            ]
+            |> String.concat " "
+            
+        div [ panelStyle ] 
+            [ 
+                for creatureID in model.GlobalState.Initiative do
+                    yield
+                        div [] [ str (descriptionOf creatureID) ]
+            ]
 
     let message (msg: Msg) =
         match msg with
