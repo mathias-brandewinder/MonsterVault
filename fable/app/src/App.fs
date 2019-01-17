@@ -48,7 +48,7 @@ module App =
             )
 
     let decide = 
-        let decisionAgent = agent RandomChoice.strategy
+        let decisionAgent = agent Naive.strategy
         fun information ->
             fun dispatch -> 
                 decisionAgent.Post (information, dispatch)

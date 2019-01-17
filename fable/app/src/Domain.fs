@@ -1261,9 +1261,9 @@ module TestSample =
         { North = 25; West = 25 } 
 
     let creature3 = 
-        GroupID 2,
-        wolf,
-        { North = 30; West = 25 } 
+        GroupID 1,
+        goblin,
+        { North = 15; West = 25 } 
 
     let creature4 = 
         GroupID 2,
