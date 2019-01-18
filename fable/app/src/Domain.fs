@@ -20,8 +20,8 @@ module DiceRolls =
         static member (+) (v1: Roll, v2: Roll) = 
             match v1, v2 with
             | Add (rolls1), Add (rolls2) -> Add (rolls1 @ rolls2)
-            | Add (rolls1), roll2 -> Add(rolls1 @ [ roll2 ])
-            | roll1, Add (rolls2) -> Add(roll1 :: rolls2)
+            | Add (rolls1), roll2 -> Add (rolls1 @ [ roll2 ])
+            | roll1, Add (rolls2) -> Add (roll1 :: rolls2)
             | roll1, roll2 -> Add [ roll1; roll2 ]
         static member (+) (roll: Roll, num: int) = roll + Value num
         static member (+) (num: int, roll: Roll) = Value num + roll
@@ -100,6 +100,8 @@ module Space =
         | SE
         | E
         | NE
+
+    let directions = [ N; NW; W; SW; S; SE; E; NE ]
 
     type Position = {
         North: int
@@ -199,8 +201,8 @@ module Weapons =
                 Range = { Short = this.ShortRange; Long = this.LongRange }
                 Usage = 
                     match this.Handling with
-                    | Melee.Limited(usage) -> usage
-                    | Melee.Versatile(usage) -> 
+                    | Melee.Limited usage -> usage
+                    | Melee.Versatile usage -> 
                         { 
                             Grip = SingleHanded
                             Damage = usage.SingleHandedDamage 
@@ -314,15 +316,15 @@ module Combat =
             member this.abilityBonus (weapon: Weapon) =           
                 let finesse = 
                     match weapon.Attacks with
-                    | Attacks.Melee(info) -> info.Finesse
-                    | Attacks.Thrown(info) -> info.MeleeAttacks.Finesse
-                    | Attacks.Ranged(_) -> false
+                    | Attacks.Melee info -> info.Finesse
+                    | Attacks.Thrown info -> info.MeleeAttacks.Finesse
+                    | Attacks.Ranged _ -> false
 
                 match finesse with
                 | true ->  [ STR; DEX ] 
                 | false -> 
                     match weapon.Attacks with
-                    | Attacks.Melee(_) -> [ STR]
+                    | Attacks.Melee(_) -> [ STR ]
                     | Attacks.Ranged(_) -> [ DEX ]
                     | Attacks.Thrown(_) -> [ STR ]
                 |> Seq.maxBy (modifier this.Abilities)
@@ -338,7 +340,7 @@ module Combat =
 
                 let meleeAttacks (attacks: Melee.Attacks) = 
                     match attacks.Handling with
-                    | Melee.Limited(info) -> 
+                    | Melee.Limited info -> 
                         {   
                             Weapon = weapon.Name
                             Type = AttackType.Melee
@@ -348,7 +350,7 @@ module Combat =
                             Reach = attacks.Reach |> Reach.Melee   
                         }
                         |> List.singleton
-                    | Melee.Versatile(info) ->
+                    | Melee.Versatile info ->
                         [
                             {
                                 Weapon = weapon.Name
@@ -380,9 +382,9 @@ module Combat =
                     |> List.singleton
 
                 match weapon.Attacks with
-                | Weapons.Melee(info) -> meleeAttacks info
-                | Weapons.Ranged(info) -> rangedAttacks info
-                | Weapons.Thrown(info) -> 
+                | Weapons.Melee info -> meleeAttacks info
+                | Weapons.Ranged info -> rangedAttacks info
+                | Weapons.Thrown info -> 
                     [
                         yield! info.MeleeAttacks |> meleeAttacks
                         yield! info.RangedAttacks |> rangedAttacks
@@ -391,7 +393,7 @@ module Combat =
             member this.AllAttacks () =
                 this.Weapons 
                 |> List.collect (fun weapon -> this.AttacksWith weapon)
-                |> List.append (this.Attacks)
+                |> List.append this.Attacks
 
         type State = {
             HasTakenReaction: bool
@@ -428,7 +430,7 @@ module Combat =
         Statistics: Map<CreatureID, Creature.Statistics>
         }
         with
-        static member Initialize(map: BattleMap, creatures: (GroupID * Creature.Statistics * Position) list) =
+        static member Initialize (map: BattleMap, creatures: (GroupID * Creature.Statistics * Position) list) =
             let initiative = 
                 creatures 
                 |> List.mapi (fun i _ -> CreatureID i)
@@ -442,6 +444,7 @@ module Combat =
                         HasTakenAction = false
                     }
                     |> Some
+
             {
                 BattleMap = map
                 Initiative = initiative
@@ -467,7 +470,7 @@ module Combat =
             | _ ->
                 let activeGroups = 
                     state.CreatureState 
-                    |> Map.filter (fun key value -> value.CanAct)
+                    |> Map.filter (fun _ value -> value.CanAct)
                     |> Seq.map (fun kv -> kv.Value.Group)
                     |> Seq.distinct
                     |> Seq.toList
@@ -482,6 +485,7 @@ module Combat =
         | FailedAttack of CreatureID * CreatureID
         | Dash of CreatureID * int<ft>
         with 
+        // apply the outcome to the state of the world
         static member applyEffect (outcome: Outcome) (state: GlobalState) =
             match outcome with
             | Outcome.Move (creature, direction, cost) ->                  
@@ -516,7 +520,7 @@ module Combat =
                         state.CreatureState
                         |> Map.add target updatedState
                 }
-            | Outcome.Dash (creature, distance) ->
+            | Outcome.Dash (_, distance) ->
                 let currentTurn = state.Turn.Value
                 { state with
                     Turn = 
@@ -525,6 +529,8 @@ module Combat =
                         }
                         |> Some
                 }
+        // update the turn, to keep track of 
+        // whether or not actions are still possible
         static member updateAction (outcome: Outcome) (state: GlobalState) =
             match outcome with
             | Outcome.Move _ -> state         
@@ -536,22 +542,23 @@ module Combat =
                 { state with 
                     Turn = Some { state.Turn.Value with HasTakenAction = true } 
                 }
-            | Outcome.Dash (creature, outcome) ->
+            | Outcome.Dash _ ->
                 { state with 
                     Turn = Some { state.Turn.Value with HasTakenAction = true } 
                 }
-
+        // update the creature state, to keep track of
+        // whether or not reactions are still possible 
         static member updateReaction (outcome: Outcome) (state: GlobalState) =
             match outcome with
             | Outcome.Move _ -> failwith "Error: move is not a possible reaction"
-            | Outcome.FailedAttack (source, target) -> 
+            | Outcome.FailedAttack (source, _) -> 
                 let attackerState = state.CreatureState.[source]
                 { state with 
                     CreatureState = 
                         state.CreatureState
                         |> Map.add source { attackerState with HasTakenReaction = true } 
                 }
-            | Outcome.SuccessfulAttack (source, target, damage) -> 
+            | Outcome.SuccessfulAttack (source, _, _) -> 
                 let attackerState = state.CreatureState.[source]
                 { state with 
                     CreatureState = 
@@ -658,7 +665,7 @@ module Combat =
                     [           
                         // every possible movement
                         yield! 
-                            [ N; NW; W; SW; S; SE; E; NE ]
+                            directions
                             |> List.map Move 
 
                         yield Dash
@@ -811,6 +818,8 @@ module Combat =
         | ActionNeeded of ActionNeeded
         | ReactionNeeded of ReactionNeeded * WaitingForConfirmation
         with 
+        // identify creatures that are already involved
+        // in the chain of reactions.
         static member Reacting machine =
             let rec reacting acc pending = 
                 match pending with 
@@ -821,7 +830,7 @@ module Combat =
             match machine with 
             | CombatFinished _ -> []
             | ActionNeeded _ -> []
-            | ReactionNeeded(reaction, pending) ->
+            | ReactionNeeded (reaction, pending) ->
                 reacting [ reaction.Creature ] pending 
 
     type Transition = 
