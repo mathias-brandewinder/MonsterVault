@@ -1,5 +1,4 @@
 namespace MonsterVault
-open AutomatedDecision
 
 module App =
 
@@ -10,6 +9,8 @@ module App =
     open MonsterVault.Combat
     open MonsterVault.Combat.Actions
     open MonsterVault.Combat.Reactions
+    open MonsterVault.Data
+    open MonsterVault.AutomatedDecision
 
     // MODEL
 
@@ -54,9 +55,30 @@ module App =
                 decisionAgent.Post (information, dispatch)
 
     let init () = 
-        let combat, machine = TestSample.initialized
+
+        let initialState =
+            (
+                { Width = 40; Height = 40 }, 
+                [ 
+                    GroupID 1, Monsters.goblin, { North = 20; West = 20 } 
+                    GroupID 1, Monsters.goblin, { North = 25; West = 25 } 
+                    GroupID 1, Monsters.goblin, { North = 15; West = 25 } 
+                    GroupID 2, Monsters.wolf, { North = 30; West = 27 } 
+                    GroupID 2, Monsters.wolf, { North = 30; West = 29 } 
+                    GroupID 2, Monsters.wolf, { North = 30; West = 31 } 
+                ]
+            )
+            |> GlobalState.Initialize 
+
+        let machine = 
+            { 
+                ActionNeeded.Creature = CreatureID 1
+                ActionNeeded.Alternatives = Actions.alternatives initialState |> Option.get
+            }
+            |> ActionNeeded
+
         {
-            GlobalState = combat
+            GlobalState = initialState
             Machine = machine
             Journal = []
         },

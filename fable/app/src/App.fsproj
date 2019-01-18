@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Domain.fs" />
+    <Compile Include="Data.fs" />
     <Compile Include="Brains.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>

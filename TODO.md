@@ -1,6 +1,5 @@
 # TODO / ISSUES
 
-- Weapons/attacks that are "natural", ex Claw
 - weapon equipped, equip, sheath, drop
 - handling of creatures leaving battle map
 - representing Advantage, Disadvantage Roll
@@ -24,3 +23,4 @@ x Proficiency, Light/Heavy weapons
 x display of events in journal (ex: result of an attack)
 x representation of allies and enemies
 x out-of-turn activities, ex: opportunity attack
+x Weapons/attacks that are "natural", ex Claw
