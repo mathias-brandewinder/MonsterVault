@@ -94,8 +94,7 @@ module Data =
                         {
                             Weapon = "bite"
                             Usage = Attacks.Natural
-                            Type = Attacks.AttackType.Melee
-                            Reach = Attacks.Reach.Melee 5<ft>
+                            Type = Attacks.AttackType.Melee 5<ft>
                             HitBonus = 4
                             Damage = 2 * d4 + 2
                         }

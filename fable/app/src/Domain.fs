@@ -198,7 +198,10 @@ module Weapons =
                 Reach = this.Melee
                 }
             member this.RangedAttacks: Ranged.Attacks = {
-                Range = { Short = this.ShortRange; Long = this.LongRange }
+                Range = { 
+                    Short = this.ShortRange
+                    Long = this.LongRange 
+                    }
                 Usage = 
                     match this.Handling with
                     | Melee.Limited usage -> usage
@@ -234,11 +237,7 @@ module Attacks =
 
     open Weapons
 
-    type AttackType = 
-        | Melee
-        | Ranged
-
-    type Reach = 
+    type AttackType =  
         | Melee of int<ft>
         | Ranged of Ranged.Range
 
@@ -250,7 +249,6 @@ module Attacks =
         Weapon: string
         Usage: Usage
         Type: AttackType
-        Reach: Reach
         HitBonus: int
         Damage: Roll
         }
@@ -343,41 +341,37 @@ module Combat =
                     | Melee.Limited info -> 
                         {   
                             Weapon = weapon.Name
-                            Type = AttackType.Melee
+                            Type = AttackType.Melee (attacks.Reach)
                             HitBonus = hitBonus
                             Usage = Equipped info.Grip
                             Damage = info.Damage + damageBonus
-                            Reach = attacks.Reach |> Reach.Melee   
                         }
                         |> List.singleton
                     | Melee.Versatile info ->
                         [
                             {
                                 Weapon = weapon.Name
-                                Type = AttackType.Melee
+                                Type = AttackType.Melee (attacks.Reach)
                                 HitBonus = hitBonus
                                 Usage = Equipped SingleHanded
                                 Damage = info.SingleHandedDamage + damageBonus
-                                Reach = attacks.Reach |> Reach.Melee   
                             }
                             {
                                 Weapon = weapon.Name
-                                Type = AttackType.Melee
+                                Type = AttackType.Melee (attacks.Reach)
                                 HitBonus = hitBonus
                                 Usage = Equipped TwoHanded
                                 Damage = info.TwoHandedDamage + damageBonus
-                                Reach = attacks.Reach |> Reach.Melee   
                             }
                         ]
 
                 let rangedAttacks (info: Ranged.Attacks) = 
                     {
                         Weapon = weapon.Name
-                        Type = AttackType.Ranged
+                        Type = AttackType.Ranged (info.Range)
                         HitBonus = hitBonus
                         Usage = Equipped info.Usage.Grip
                         Damage = info.Usage.Damage + damageBonus
-                        Reach = info.Range |> Reach.Ranged
                     }
                     |> List.singleton
 
@@ -630,18 +624,18 @@ module Combat =
                             | Some turn -> 
                                 not turn.HasTakenAction
 
-            let ``A creature can only attack within weapon range`` : Rule =
+            let ``A creature can only attack within attack range`` : Rule =
                 fun state ->
                     fun (creatureID, action) ->
                         match action with 
-                        | Attack (targetID, weapon) ->
+                        | Attack (targetID, attack) ->
                             let attackerState = state.CreatureState.[creatureID]
                             let targetState = state.CreatureState.[targetID]
                             let dist = distance attackerState.Position targetState.Position
                             let maximumDistance = 
-                                match weapon.Reach with
-                                | Attacks.Reach.Melee (reach) -> reach
-                                | Attacks.Reach.Ranged (range) -> range.Long
+                                match attack.Type with
+                                | Attacks.Melee (reach) -> reach
+                                | Attacks.Ranged (range) -> range.Long
                             dist <= maximumDistance
                         | _ -> true
 
@@ -650,7 +644,7 @@ module Combat =
                 ``A creature cannot move if it has not enough movement left``
                 ``A creature cannot move to a space occupied by another creature``
                 ``A creature can take at most one action per turn``
-                ``A creature can only attack within weapon range``
+                ``A creature can only attack within attack range``
                 ]
 
             let validateAgainst state = 
@@ -721,11 +715,10 @@ module Combat =
                     
                     let attackerStats = globalState.Statistics.[creature]
                     attackerStats.AllAttacks ()
-                    |> List.filter (fun attack -> attack.Type = Attacks.Melee)
                     |> List.filter (fun attack -> 
-                        match attack.Reach with 
-                        | Attacks.Reach.Melee reach -> distanceBefore <= reach && distanceAfter > reach
-                        | Attacks.Reach.Ranged _ -> false)
+                        match attack.Type with 
+                        | Attacks.Melee reach -> distanceBefore <= reach && distanceAfter > reach
+                        | Attacks.Ranged _ -> false)
                     |> List.map (fun attack -> OpportunityAttack(trigger, attack))
                 | SuccessfulAttack _ -> [] 
                 | FailedAttack _ -> []
@@ -752,11 +745,10 @@ module Combat =
                         
                         let attackerStats = globalState.Statistics.[creature]
                         attackerStats.AllAttacks ()
-                        |> List.filter (fun attack -> attack.Type = Attacks.Melee)
                         |> List.filter (fun attack -> 
-                            match attack.Reach with 
-                            | Attacks.Reach.Melee reach -> dist <= reach
-                            | Attacks.Reach.Ranged _ -> false)
+                            match attack.Type with 
+                            | Attacks.Melee reach -> dist <= reach
+                            | Attacks.Ranged _ -> false)
                         |> List.map (fun attack -> Riposte (origin, attack))
                 | FailedAttack _ -> []
                 | Dash _ -> []
