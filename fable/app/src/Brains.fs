@@ -61,7 +61,10 @@ module AutomatedDecision =
             // if no ranged attack available, move towards enemy
             let hasRangedAttacks = 
                 attacks
-                |> Seq.exists (fun attack -> attack.Type = Attacks.Ranged)
+                |> Seq.exists (fun attack -> 
+                    match attack.Type with
+                    | Attacks.Ranged _ -> true
+                    | _ -> false)
             if (not hasRangedAttacks)
             then 
                 let closestLiveEnemy = 
