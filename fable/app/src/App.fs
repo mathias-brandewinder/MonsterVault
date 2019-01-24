@@ -14,16 +14,22 @@ module App =
 
     // MODEL
 
+    type DecisionMode = 
+        | Automated 
+        | Manual
+
     type Model = {
         GlobalState: GlobalState
         Machine: Machine
         Journal: list<Transition>
+        Mode: DecisionMode
         }
 
     type Msg = 
         | RestartCombat
         | CreatureAction of (CreatureID * ActionTaken)
         | CreatureReaction of (CreatureID * ReactionTaken)
+        | SelectMode of DecisionMode
     
     let agent (strategy: AutomatedDecision.Strategy) =    
         MailboxProcessor<DecisionInformation * Dispatch<Msg>>.Start(
@@ -81,61 +87,69 @@ module App =
             GlobalState = initialState
             Machine = machine
             Journal = []
+            Mode = Manual
         },
         Cmd.ofMsg RestartCombat
 
     // UPDATE
     let update (msg: Msg) (model: Model) =
 
-        let globalState, machine = model.GlobalState, model.Machine
-
-        let internalCommand = 
-            match msg with 
-            | RestartCombat -> 
-                StartCombat (init >> fst >> fun x -> x.GlobalState, x.Machine) 
-            | CreatureAction (creature, action) ->           
-                match machine with 
-                | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no action"
-                | Machine.ReactionNeeded _ -> InvalidCommand "Expecting a reaction, not an action"
-                | Machine.ActionNeeded actionNeeded ->
-                    if (not (actionNeeded.Alternatives |> List.contains action))
-                    then InvalidCommand "Unexpected action"
-                    else 
-                        match action with 
-                        | ActionTaken.FinishTurn -> Transition.FinishTurn creature
-                        | ActionTaken.Action(action) -> AttemptAction (creature, action)
-            | CreatureReaction (creature, reaction) -> 
-                match machine with 
-                | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no reaction"
-                | Machine.ActionNeeded _ -> InvalidCommand "Expecting an action, not a reaction"
-                | Machine.ReactionNeeded (reactionNeeded, pending) ->
-                    if (not (reactionNeeded.Alternatives |> List.contains reaction))
-                    then InvalidCommand "Unexpected reaction"
-                    else 
-                        match reaction with 
-                        | Pass -> Transition.PassReaction creature
-                        | Reactions.Reaction(reaction) -> AttemptReaction (creature, reaction)
-        
-        let updated = 
-            execute (globalState, machine, model.Journal) internalCommand 
-            |> fun (state, machine, journal) -> 
-                { GlobalState = state; Machine = machine; Journal = journal }
-        
-        match updated.Machine with 
-        | Machine.ActionNeeded action ->
-            let info = { 
-                Info = updated.GlobalState
-                DecisionNeeded = AutomatedDecision.Action action              
-                }
-            updated, Cmd.ofSub (decide info)
-        | Machine.ReactionNeeded (reaction, _) ->
-            let info = { 
-                Info = updated.GlobalState
-                DecisionNeeded = AutomatedDecision.Reaction reaction              
-                }
-            updated, Cmd.ofSub (decide info)
+        match msg with
+        | SelectMode mode -> { model with Mode = mode }, Cmd.none       
         | _ ->
-            updated, Cmd.none
+            let globalState, machine = model.GlobalState, model.Machine
+
+            let internalCommand = 
+                match msg with 
+                // | SelectMode mode -> { model with Mode = mode } 
+                | RestartCombat ->                 
+                    StartCombat (init >> fst >> fun x -> x.GlobalState, x.Machine) 
+                | CreatureAction (creature, action) ->           
+                    match machine with 
+                    | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no action"
+                    | Machine.ReactionNeeded _ -> InvalidCommand "Expecting a reaction, not an action"
+                    | Machine.ActionNeeded actionNeeded ->
+                        if (not (actionNeeded.Alternatives |> List.contains action))
+                        then InvalidCommand "Unexpected action"
+                        else 
+                            match action with 
+                            | ActionTaken.FinishTurn -> Transition.FinishTurn creature
+                            | ActionTaken.Action(action) -> AttemptAction (creature, action)
+                | CreatureReaction (creature, reaction) -> 
+                    match machine with 
+                    | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no reaction"
+                    | Machine.ActionNeeded _ -> InvalidCommand "Expecting an action, not a reaction"
+                    | Machine.ReactionNeeded (reactionNeeded, pending) ->
+                        if (not (reactionNeeded.Alternatives |> List.contains reaction))
+                        then InvalidCommand "Unexpected reaction"
+                        else 
+                            match reaction with 
+                            | Pass -> Transition.PassReaction creature
+                            | Reactions.Reaction(reaction) -> AttemptReaction (creature, reaction)
+            
+            let updated = 
+                execute (globalState, machine, model.Journal) internalCommand 
+                |> fun (state, machine, journal) -> 
+                    { GlobalState = state; Machine = machine; Journal = journal; Mode = model.Mode }
+            
+            match updated.Mode with
+            | Manual -> updated, Cmd.none
+            | Automated ->
+                match updated.Machine with 
+                | Machine.ActionNeeded action ->
+                    let info = { 
+                        Info = updated.GlobalState
+                        DecisionNeeded = AutomatedDecision.Action action              
+                        }
+                    updated, Cmd.ofSub (decide info)
+                | Machine.ReactionNeeded (reaction, _) ->
+                    let info = { 
+                        Info = updated.GlobalState
+                        DecisionNeeded = AutomatedDecision.Reaction reaction              
+                        }
+                    updated, Cmd.ofSub (decide info)
+                | _ ->
+                    updated, Cmd.none
 
     // VIEW (rendered with React)
 
@@ -261,6 +275,7 @@ module App =
         | Msg.CreatureAction (creature, action) -> action |> string
         | Msg.CreatureReaction (creature, reaction) -> reaction |> string
         | Msg.RestartCombat -> "Restart" 
+        | Msg.SelectMode mode -> mode |> string
 
     let commands (model: Model) dispatch =
 
@@ -275,7 +290,12 @@ module App =
                 reactionNeeded.Alternatives
                 |> List.map (fun action -> reactionNeeded.Creature, action)
                 |> List.map (Msg.CreatureReaction)
-            | Machine.CombatFinished _ -> [ Msg.RestartCombat ]
+            | Machine.CombatFinished _ -> 
+                [   
+                    Msg.RestartCombat 
+                    Msg.SelectMode Manual
+                    Msg.SelectMode Automated
+                ]
 
         div [ panelStyle ]
             [
