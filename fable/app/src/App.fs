@@ -78,7 +78,7 @@ module App =
 
         let machine = 
             { 
-                ActionNeeded.Creature = CreatureID 1
+                ActionNeeded.Creature = CreatureID 0
                 ActionNeeded.Alternatives = Actions.alternatives initialState |> Option.get
             }
             |> ActionNeeded
@@ -254,7 +254,6 @@ module App =
         let states = model.GlobalState.CreatureState
         let descriptionOf creatureID = 
             [
-                yield br []               
                 yield str (stats.[creatureID].Description)
                 yield br []
                 yield str (sprintf "Hit points: %i/%i" states.[creatureID].HitPoints stats.[creatureID].HitPoints)
@@ -299,6 +298,7 @@ module App =
 
         div [ panelStyle ]
             [
+                yield (str (model.GlobalState.Turn.Value.Creature |> string))
                 yield div [] [ str "Alternatives" ]
                 for msg in messages -> 
                     button [ OnClick (fun _ -> dispatch msg) ] [ str (message msg) ] 
@@ -323,8 +323,12 @@ module App =
                     [
                         state model dispatch
                         commands model dispatch
-                        journal model dispatch
                     ]
+
+                div [ Style [ Float "left"; Width 200 ] ]
+                    [
+                        journal model dispatch
+                    ]                    
             ]
 
     // App
