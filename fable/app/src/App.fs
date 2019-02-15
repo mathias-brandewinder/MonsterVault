@@ -14,22 +14,28 @@ module App =
 
     // MODEL
 
-    type DecisionMode = 
-        | Automated 
-        | Manual
+    module Simulation =
 
-    type Model = {
-        GlobalState: GlobalState
-        Machine: Machine
-        Journal: list<Transition>
-        Mode: DecisionMode
-        }
+        type DecisionMode = 
+            | Automated 
+            | Manual
+
+        type Msg = 
+            | SelectMode of DecisionMode
 
     type Msg = 
         | RestartCombat
         | CreatureAction of (CreatureID * ActionTaken)
         | CreatureReaction of (CreatureID * ReactionTaken)
-        | SelectMode of DecisionMode
+        | Simulation of Simulation.Msg
+        // | SelectMode of Simulation.DecisionMode
+
+    type Model = {
+        GlobalState: GlobalState
+        Machine: Machine
+        Journal: list<Transition>
+        Mode: Simulation.DecisionMode
+        }
     
     let agent (strategy: AutomatedDecision.Strategy) =    
         MailboxProcessor<DecisionInformation * Dispatch<Msg>>.Start(
@@ -87,7 +93,7 @@ module App =
             GlobalState = initialState
             Machine = machine
             Journal = []
-            Mode = Manual
+            Mode = Simulation.Manual
         },
         Cmd.ofMsg RestartCombat
 
@@ -95,7 +101,9 @@ module App =
     let update (msg: Msg) (model: Model) =
 
         match msg with
-        | SelectMode mode -> { model with Mode = mode }, Cmd.none       
+        | Simulation info ->
+            match info with
+            | Simulation.SelectMode mode -> { model with Mode = mode }, Cmd.none       
         | _ ->
             let globalState, machine = model.GlobalState, model.Machine
 
@@ -133,8 +141,8 @@ module App =
                     { GlobalState = state; Machine = machine; Journal = journal; Mode = model.Mode }
             
             match updated.Mode with
-            | Manual -> updated, Cmd.none
-            | Automated ->
+            | Simulation.Manual -> updated, Cmd.none
+            | Simulation.Automated ->
                 match updated.Machine with 
                 | Machine.ActionNeeded action ->
                     let info = { 
@@ -274,7 +282,9 @@ module App =
         | Msg.CreatureAction (creature, action) -> action |> string
         | Msg.CreatureReaction (creature, reaction) -> reaction |> string
         | Msg.RestartCombat -> "Restart" 
-        | Msg.SelectMode mode -> mode |> string
+        | Msg.Simulation(info) -> 
+            match info with
+            | Simulation.SelectMode mode -> mode |> string
 
     let commands (model: Model) dispatch =
 
@@ -292,8 +302,8 @@ module App =
             | Machine.CombatFinished _ -> 
                 [   
                     Msg.RestartCombat 
-                    Msg.SelectMode Manual
-                    Msg.SelectMode Automated
+                    Msg.Simulation(Simulation.SelectMode Simulation.Manual)
+                    Msg.Simulation(Simulation.SelectMode Simulation.Automated)
                 ]
 
         div [ panelStyle ]
