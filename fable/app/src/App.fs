@@ -53,13 +53,11 @@ module App =
                         | AutomatedDecision.Action action ->
                             strategy.TakeAction action info.Info
                             |> Creature.Action
-                            |> Decision
-                            |> dispatch
                         | AutomatedDecision.Reaction reaction ->
                             RandomChoice.takeReaction reaction info.Info
                             |> Creature.Reaction
-                            |> Decision
-                            |> dispatch
+                        |> Decision
+                        |> dispatch
             
                         return! loop ()
                     }
@@ -85,64 +83,66 @@ module App =
     // UPDATE
     let update (msg: Msg) (model: Model) =
 
-        match msg with
-        | Simulation info ->
-            match info with
-            | Simulation.SelectMode mode -> { model with Mode = mode }, Cmd.none
-            | Simulation.RestartCombat -> 
-                let state, cmd = init ()
-                { state with Mode = model.Mode }, Cmd.none
-
-        | Decision decision ->
-            let globalState, machine = model.GlobalState, model.Machine
-            let internalCommand = 
-                match decision with 
-                | Creature.Action (creature, action) ->           
-                    match machine with 
-                    | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no action"
-                    | Machine.ReactionNeeded _ -> InvalidCommand "Expecting a reaction, not an action"
-                    | Machine.ActionNeeded actionNeeded ->
-                        if (not (actionNeeded.Alternatives |> List.contains action))
-                        then InvalidCommand "Unexpected action"
-                        else 
-                            match action with 
-                            | ActionTaken.FinishTurn -> Transition.FinishTurn creature
-                            | ActionTaken.Action(action) -> AttemptAction (creature, action)
-                | Creature.Reaction (creature, reaction) -> 
-                    match machine with 
-                    | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no reaction"
-                    | Machine.ActionNeeded _ -> InvalidCommand "Expecting an action, not a reaction"
-                    | Machine.ReactionNeeded (reactionNeeded, pending) ->
-                        if (not (reactionNeeded.Alternatives |> List.contains reaction))
-                        then InvalidCommand "Unexpected reaction"
-                        else 
-                            match reaction with 
-                            | Pass -> Transition.PassReaction creature
-                            | Reactions.Reaction(reaction) -> AttemptReaction (creature, reaction)
-            
-            let updated = 
+        let updated = 
+            match msg with
+            | Simulation info ->
+                match info with
+                | Simulation.SelectMode mode -> 
+                    { model with Mode = mode }
+                | Simulation.RestartCombat -> 
+                    let state, cmd = init ()
+                    { state with Mode = model.Mode }
+            | Decision decision ->
+                let globalState, machine = model.GlobalState, model.Machine
+                let internalCommand = 
+                    match decision with 
+                    | Creature.Action (creature, action) ->           
+                        match machine with 
+                        | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no action"
+                        | Machine.ReactionNeeded _ -> InvalidCommand "Expecting a reaction, not an action"
+                        | Machine.ActionNeeded actionNeeded ->
+                            if (not (actionNeeded.Alternatives |> List.contains action))
+                            then InvalidCommand "Unexpected action"
+                            else 
+                                match action with 
+                                | ActionTaken.FinishTurn -> Transition.FinishTurn creature
+                                | ActionTaken.Action(action) -> AttemptAction (creature, action)
+                    | Creature.Reaction (creature, reaction) -> 
+                        match machine with 
+                        | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no reaction"
+                        | Machine.ActionNeeded _ -> InvalidCommand "Expecting an action, not a reaction"
+                        | Machine.ReactionNeeded (reactionNeeded, pending) ->
+                            if (not (reactionNeeded.Alternatives |> List.contains reaction))
+                            then InvalidCommand "Unexpected reaction"
+                            else 
+                                match reaction with 
+                                | Pass -> Transition.PassReaction creature
+                                | Reactions.Reaction(reaction) -> AttemptReaction (creature, reaction)               
                 execute (globalState, machine, model.Journal) internalCommand 
                 |> fun (state, machine, journal) -> 
                     { GlobalState = state; Machine = machine; Journal = journal; Mode = model.Mode }
-            
-            match updated.Mode with
-            | Simulation.Manual -> updated, Cmd.none
-            | Simulation.Automated ->
-                match updated.Machine with 
-                | Machine.ActionNeeded action ->
-                    let info = { 
-                        Info = updated.GlobalState
-                        DecisionNeeded = AutomatedDecision.Action action              
-                        }
-                    updated, Cmd.ofSub (decide info)
-                | Machine.ReactionNeeded (reaction, _) ->
-                    let info = { 
-                        Info = updated.GlobalState
-                        DecisionNeeded = AutomatedDecision.Reaction reaction              
-                        }
-                    updated, Cmd.ofSub (decide info)
-                | _ ->
-                    updated, Cmd.none
+        // Once the state has been computed,
+        // if we are in automated mode,
+        // the decision agent needs to be notified
+        // that a decision is needed.
+        match updated.Mode with
+        | Simulation.Manual -> updated, Cmd.none
+        | Simulation.Automated ->
+            match updated.Machine with 
+            | Machine.ActionNeeded action ->
+                let info = { 
+                    Info = updated.GlobalState
+                    DecisionNeeded = AutomatedDecision.Action action              
+                    }
+                updated, Cmd.ofSub (decide info)
+            | Machine.ReactionNeeded (reaction, _) ->
+                let info = { 
+                    Info = updated.GlobalState
+                    DecisionNeeded = AutomatedDecision.Reaction reaction              
+                    }
+                updated, Cmd.ofSub (decide info)
+            | _ ->
+                updated, Cmd.none
 
     // VIEW (rendered with React)
 
@@ -255,11 +255,22 @@ module App =
                 if states.[creatureID].HasTakenReaction then yield (str "Reaction taken")         
             ]
             
-        div [ panelStyle ] 
-            [ 
-                for creatureID in model.GlobalState.Initiative do
-                    yield
-                        div [ vignetteStyle ] (descriptionOf creatureID)
+        div [ panelStyle ]            
+            [
+                div [] 
+                    [
+                        yield button [ OnClick (fun _ -> dispatch (Msg.Simulation(Simulation.RestartCombat) )) ] [ str "Restart" ]
+                        match model.Mode with
+                        | Simulation.Manual -> 
+                            yield button [ OnClick (fun _ -> dispatch (Msg.Simulation(Simulation.SelectMode Simulation.Automated))) ] [ str "Switch to Automated" ]
+                        | Simulation.Automated -> 
+                            yield button [ OnClick (fun _ -> dispatch (Msg.Simulation(Simulation.SelectMode Simulation.Manual))) ] [ str "Switch to Manual" ]
+                    ]
+                div []
+                    [
+                        for creatureID in model.GlobalState.Initiative ->
+                            div [ vignetteStyle ] (descriptionOf creatureID)
+                    ]
             ]
 
     let message (msg: Msg) =
@@ -281,13 +292,11 @@ module App =
             | Machine.ActionNeeded (actionNeeded) -> 
                 actionNeeded.Alternatives
                 |> List.map (fun action -> actionNeeded.Creature, action)
-                |> List.map Creature.Action
-                |> List.map Msg.Decision
+                |> List.map (Creature.Action >> Msg.Decision)
             | Machine.ReactionNeeded (reactionNeeded, _) -> 
                 reactionNeeded.Alternatives
                 |> List.map (fun action -> reactionNeeded.Creature, action)
-                |> List.map Creature.Reaction
-                |> List.map Msg.Decision
+                |> List.map (Creature.Reaction >> Msg.Decision)
             | Machine.CombatFinished _ -> 
                 [   
                     Msg.Simulation(Simulation.RestartCombat) 
