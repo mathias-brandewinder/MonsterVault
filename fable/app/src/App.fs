@@ -20,15 +20,19 @@ module App =
             | Automated 
             | Manual
 
-        type Msg = 
+        type Settings = 
             | SelectMode of DecisionMode
+            | RestartCombat
+
+    module Creature = 
+
+        type Decision = 
+            | Action of (CreatureID * ActionTaken)
+            | Reaction of (CreatureID * ReactionTaken)
 
     type Msg = 
-        | RestartCombat
-        | CreatureAction of (CreatureID * ActionTaken)
-        | CreatureReaction of (CreatureID * ReactionTaken)
-        | Simulation of Simulation.Msg
-        // | SelectMode of Simulation.DecisionMode
+        | Decision of Creature.Decision
+        | Simulation of Simulation.Settings
 
     type Model = {
         GlobalState: GlobalState
@@ -48,11 +52,13 @@ module App =
                         match info.DecisionNeeded with
                         | AutomatedDecision.Action action ->
                             strategy.TakeAction action info.Info
-                            |> CreatureAction
+                            |> Creature.Action
+                            |> Decision
                             |> dispatch
                         | AutomatedDecision.Reaction reaction ->
                             RandomChoice.takeReaction reaction info.Info
-                            |> CreatureReaction
+                            |> Creature.Reaction
+                            |> Decision
                             |> dispatch
             
                         return! loop ()
@@ -67,35 +73,14 @@ module App =
                 decisionAgent.Post (information, dispatch)
 
     let init () = 
-
-        let initialState =
-            (
-                { Width = 40; Height = 40 }, 
-                [ 
-                    GroupID 1, Monsters.goblin, { North = 20; West = 20 } 
-                    GroupID 1, Monsters.goblin, { North = 25; West = 25 } 
-                    GroupID 1, Monsters.goblin, { North = 15; West = 25 } 
-                    GroupID 2, Monsters.wolf, { North = 30; West = 27 } 
-                    GroupID 2, Monsters.wolf, { North = 30; West = 29 } 
-                    GroupID 2, Monsters.wolf, { North = 30; West = 31 } 
-                ]
-            )
-            |> GlobalState.Initialize 
-
-        let machine = 
-            { 
-                ActionNeeded.Creature = CreatureID 0
-                ActionNeeded.Alternatives = Actions.alternatives initialState |> Option.get
-            }
-            |> ActionNeeded
-
+        let state, machine = initialState ()
         {
-            GlobalState = initialState
+            GlobalState = state
             Machine = machine
             Journal = []
             Mode = Simulation.Manual
         },
-        Cmd.ofMsg RestartCombat
+        Cmd.ofMsg (Msg.Simulation(Simulation.RestartCombat))
 
     // UPDATE
     let update (msg: Msg) (model: Model) =
@@ -103,16 +88,16 @@ module App =
         match msg with
         | Simulation info ->
             match info with
-            | Simulation.SelectMode mode -> { model with Mode = mode }, Cmd.none       
-        | _ ->
-            let globalState, machine = model.GlobalState, model.Machine
+            | Simulation.SelectMode mode -> { model with Mode = mode }, Cmd.none
+            | Simulation.RestartCombat -> 
+                let state, cmd = init ()
+                { state with Mode = model.Mode }, Cmd.none
 
+        | Decision decision ->
+            let globalState, machine = model.GlobalState, model.Machine
             let internalCommand = 
-                match msg with 
-                // | SelectMode mode -> { model with Mode = mode } 
-                | RestartCombat ->                 
-                    StartCombat (init >> fst >> fun x -> x.GlobalState, x.Machine) 
-                | CreatureAction (creature, action) ->           
+                match decision with 
+                | Creature.Action (creature, action) ->           
                     match machine with 
                     | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no action"
                     | Machine.ReactionNeeded _ -> InvalidCommand "Expecting a reaction, not an action"
@@ -123,7 +108,7 @@ module App =
                             match action with 
                             | ActionTaken.FinishTurn -> Transition.FinishTurn creature
                             | ActionTaken.Action(action) -> AttemptAction (creature, action)
-                | CreatureReaction (creature, reaction) -> 
+                | Creature.Reaction (creature, reaction) -> 
                     match machine with 
                     | Machine.CombatFinished _ -> InvalidCommand "Combat finished / no reaction"
                     | Machine.ActionNeeded _ -> InvalidCommand "Expecting an action, not a reaction"
@@ -279,12 +264,14 @@ module App =
 
     let message (msg: Msg) =
         match msg with
-        | Msg.CreatureAction (creature, action) -> action |> string
-        | Msg.CreatureReaction (creature, reaction) -> reaction |> string
-        | Msg.RestartCombat -> "Restart" 
+        | Decision decision ->
+            match decision with
+            | Creature.Action (creature, action) -> action |> string
+            | Creature.Reaction (creature, reaction) -> reaction |> string
         | Msg.Simulation(info) -> 
             match info with
             | Simulation.SelectMode mode -> mode |> string
+            | Simulation.RestartCombat -> "Restart" 
 
     let commands (model: Model) dispatch =
 
@@ -294,14 +281,16 @@ module App =
             | Machine.ActionNeeded (actionNeeded) -> 
                 actionNeeded.Alternatives
                 |> List.map (fun action -> actionNeeded.Creature, action)
-                |> List.map (Msg.CreatureAction)
+                |> List.map Creature.Action
+                |> List.map Msg.Decision
             | Machine.ReactionNeeded (reactionNeeded, _) -> 
                 reactionNeeded.Alternatives
                 |> List.map (fun action -> reactionNeeded.Creature, action)
-                |> List.map (Msg.CreatureReaction)
+                |> List.map Creature.Reaction
+                |> List.map Msg.Decision
             | Machine.CombatFinished _ -> 
                 [   
-                    Msg.RestartCombat 
+                    Msg.Simulation(Simulation.RestartCombat) 
                     Msg.Simulation(Simulation.SelectMode Simulation.Manual)
                     Msg.Simulation(Simulation.SelectMode Simulation.Automated)
                 ]

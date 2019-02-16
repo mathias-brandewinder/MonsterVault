@@ -100,3 +100,28 @@ module Data =
                         }
                     ]
             }
+
+    let initialState () = 
+
+        let state =
+            (
+                { Width = 40; Height = 40 }, 
+                [ 
+                    GroupID 1, Monsters.goblin, { North = 20; West = 20 } 
+                    GroupID 1, Monsters.goblin, { North = 25; West = 25 } 
+                    GroupID 1, Monsters.goblin, { North = 15; West = 25 } 
+                    GroupID 2, Monsters.wolf, { North = 30; West = 27 } 
+                    GroupID 2, Monsters.wolf, { North = 30; West = 29 } 
+                    GroupID 2, Monsters.wolf, { North = 30; West = 31 } 
+                ]
+            )
+            |> GlobalState.Initialize 
+
+        let machine = 
+            { 
+                ActionNeeded.Creature = CreatureID 0
+                ActionNeeded.Alternatives = Actions.alternatives state |> Option.get
+            }
+            |> ActionNeeded 
+
+        state, machine      
