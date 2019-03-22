@@ -10,6 +10,11 @@ module DiceRolls =
         | Advantage
         | Disadvantage
 
+    type Modification = 
+        | Adv
+        | Dis 
+        | Mix 
+
     type Dice = 
         | D of Sides : int
         static member (*) (times: int, dice: Dice) = Roll (times, dice)
@@ -17,6 +22,7 @@ module DiceRolls =
         | Roll of int * Dice
         | Value of int
         | Add of Roll list
+        | Modified of Modification * Roll
         static member (+) (v1: Roll, v2: Roll) = 
             match v1, v2 with
             | Add (rolls1), Add (rolls2) -> Add (rolls1 @ rolls2)
@@ -32,15 +38,31 @@ module DiceRolls =
                 |> Seq.sum
             | Value (value) -> value
             | Add (rolls) -> rolls |> List.sumBy Roll.roll
-        static member roll (roll: Roll, modifier: Modifier) =
-            let roll1 = roll |> Roll.roll
-            let roll2 = roll |> Roll.roll
-            match modifier with
-            | Disadvantage ->
-                min roll1 roll2
-            | Advantage ->
-                max roll1 roll2
-      
+            | Modified (modif, roll) ->
+                match modif with 
+                | Mix -> roll |> Roll.roll
+                | Adv -> max (roll |> Roll.roll) (roll |> Roll.roll)
+                | Dis -> min (roll |> Roll.roll) (roll |> Roll.roll)
+        static member With (modif: Modifier) (roll: Roll) =
+            match roll with 
+            | Roll _ 
+            | Value _  
+            | Add _ -> 
+                match modif with 
+                | Advantage -> Modified (Adv, roll)
+                | Disadvantage -> Modified (Dis, roll)
+            | Modified (modifiers, originalRoll) ->
+                match modifiers with
+                | Mix -> roll
+                | Adv -> 
+                    match modif with 
+                    | Advantage -> roll
+                    | Disadvantage -> Modified (Mix, originalRoll)
+                | Dis -> 
+                    match modif with 
+                    | Disadvantage -> roll
+                    | Advantage -> Modified (Mix, originalRoll)
+
     let d4 = D 4
     let d6 = D 6
     let d8 = D 8
