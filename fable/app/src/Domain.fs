@@ -282,9 +282,8 @@ module Attacks =
         | 1 -> None // critical fail
         | 20 -> 
             // critical hit
-            attack.Damage 
-            |> Roll.roll
-            |> (*) 2
+            [ attack.Damage; attack.Damage ] 
+            |> List.sumBy Roll.roll 
             |> Some
         | roll -> 
             let attackRoll = roll + attack.HitBonus
