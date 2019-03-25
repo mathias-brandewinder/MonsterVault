@@ -939,8 +939,16 @@ module Combat =
                     Outcome.Move (creature, dir, cost)
                 | Attack (target, attack) -> 
                     let ac = globalState.Statistics.[target].ArmorClass
-                    let dodging = globalState.CreatureState.[target].Dodging                  
-                    match Attacks.damage dodging ac attack with
+                    let dodging = globalState.CreatureState.[target].Dodging
+                    let longRange = 
+                        match attack.Type with 
+                        | AttackType.Ranged range -> 
+                            let posAttacker = globalState.CreatureState.[creature].Position
+                            let posTarget = globalState.CreatureState.[target].Position
+                            let dist = distance posAttacker posTarget
+                            dist > range.Short
+                        | AttackType.Melee _ -> false              
+                    match Attacks.damage (dodging || longRange) ac attack with
                     | None -> Outcome.FailedAttack (creature, target)
                     | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
                 | Action.Dash ->
