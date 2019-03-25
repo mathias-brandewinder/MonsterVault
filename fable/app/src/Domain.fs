@@ -413,6 +413,7 @@ module Combat =
 
         type State = {
             HasTakenReaction: bool
+            Dodging: bool
             HitPoints: int
             Position: Position
             Dead: bool
@@ -430,6 +431,7 @@ module Combat =
                 Group = group
                 Position = pos
                 HasTakenReaction = false
+                Dodging = false
                 Dead = false
             }
 
@@ -891,6 +893,7 @@ module Combat =
                 let nextCreatureState = 
                     { globalState.CreatureState.[nextCreatureUp] with
                         HasTakenReaction = false
+                        Dodging = false
                     }
                 let globalState = 
                     { globalState with 
