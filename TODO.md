@@ -2,10 +2,9 @@
 
 - weapon equipped, equip, sheath, drop
 - handling of creatures leaving battle map
-- representing Advantage, Disadvantage Roll
 - crossing creature space and size 
 - Multi Attacks: 1 Action, 2 Attacks
-- outcome for actions such as Dash or Dodge
+- record full detail of attack (attack roll, crit, adv/dis, ...)
 
 ## Backlog
 
@@ -24,3 +23,5 @@ x display of events in journal (ex: result of an attack)
 x representation of allies and enemies
 x out-of-turn activities, ex: opportunity attack
 x Weapons/attacks that are "natural", ex Claw
+x representing Advantage, Disadvantage Roll
+x outcome for actions such as Dash or Dodge

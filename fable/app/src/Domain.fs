@@ -276,8 +276,15 @@ module Attacks =
         Damage: Roll
         }
 
-    let damage ac (attack: Attack) =
-        let baseAttackRoll = 1 * d20 |> Roll.roll
+    let damage dodging ac (attack: Attack) =        
+        let baseAttackRoll = 
+            if dodging
+            then
+                1 * d20 
+                |> Roll.With Disadvantage 
+                |> Roll.roll
+            else
+                1 * d20 |> Roll.roll
         match baseAttackRoll with
         | 1 -> None // critical fail
         | 20 -> 
@@ -932,7 +939,8 @@ module Combat =
                     Outcome.Move (creature, dir, cost)
                 | Attack (target, attack) -> 
                     let ac = globalState.Statistics.[target].ArmorClass
-                    match Attacks.damage ac attack with
+                    let dodging = globalState.CreatureState.[target].Dodging                  
+                    match Attacks.damage dodging ac attack with
                     | None -> Outcome.FailedAttack (creature, target)
                     | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
                 | Action.Dash ->
@@ -1022,12 +1030,14 @@ module Combat =
                 match reaction with
                 | Reaction.OpportunityAttack (target, attackStatistics) -> 
                     let ac = globalState.Statistics.[target].ArmorClass
-                    match Attacks.damage ac attackStatistics with
+                    let dodging = globalState.CreatureState.[target].Dodging                  
+                    match Attacks.damage dodging ac attackStatistics with
                     | None -> Outcome.FailedAttack (creature, target)
                     | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
                 | Reaction.Riposte (target, attackStatistics) -> 
                     let ac = globalState.Statistics.[target].ArmorClass
-                    match Attacks.damage ac attackStatistics with
+                    let dodging = globalState.CreatureState.[target].Dodging                  
+                    match Attacks.damage dodging ac attackStatistics with
                     | None -> Outcome.FailedAttack (creature, target)
                     | Some damage -> Outcome.SuccessfulAttack (creature, target, damage)
             let alreadyReacting = machine |> Machine.Reacting
