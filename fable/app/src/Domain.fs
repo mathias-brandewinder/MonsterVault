@@ -320,6 +320,7 @@ module Combat =
         Creature: CreatureID
         MovementLeft: int<ft>
         HasTakenAction: bool
+        Disengaging: bool
         }
 
     [<RequireQualifiedAccess>]
@@ -467,6 +468,7 @@ module Combat =
                         Creature = initiative |> List.head 
                         MovementLeft = stats.Movement
                         HasTakenAction = false
+                        Disengaging = false
                     }
                     |> Some
 
@@ -510,6 +512,7 @@ module Combat =
         | FailedAttack of CreatureID * CreatureID
         | Dash of CreatureID * int<ft>
         | Dodge of CreatureID
+        | Disengage of CreatureID
         with 
         // apply the outcome to the state of the world
         static member applyEffect (outcome: Outcome) (state: GlobalState) =
@@ -566,7 +569,15 @@ module Combat =
                         state.CreatureState
                         |> Map.add creature updatedState
                 }
-
+            | Outcome.Disengage creature ->
+                let currentTurn = state.Turn.Value
+                { state with
+                    Turn = 
+                        { currentTurn with 
+                            Disengaging = true
+                        }
+                        |> Some
+                }
         // update the turn, to keep track of 
         // whether or not actions are still possible
         static member updateAction (outcome: Outcome) (state: GlobalState) =
@@ -575,7 +586,8 @@ module Combat =
             | Outcome.FailedAttack _ 
             | Outcome.SuccessfulAttack _  
             | Outcome.Dash _ 
-            | Outcome.Dodge _ ->
+            | Outcome.Dodge _ 
+            | Outcome.Disengage _ ->
                 { state with 
                     Turn = Some { state.Turn.Value with HasTakenAction = true } 
                 }
@@ -600,6 +612,7 @@ module Combat =
                 }
             | Outcome.Dash _ -> failwith "Error: dash is not a possible reaction"
             | Outcome.Dodge _ -> failwith "Error: dodge is not a possible reaction"
+            | Outcome.Disengage _ -> failwith "Error: disengage is not a possible reaction"
 
     module Actions = 
 
@@ -608,6 +621,7 @@ module Combat =
             | Attack of (CreatureID * Attack)
             | Dash
             | Dodge
+            | Disengage
 
         type ActionTaken =
             | FinishTurn 
@@ -705,6 +719,7 @@ module Combat =
 
                         yield Dash
                         yield Dodge
+                        yield Disengage
                         // every possible attack
                         let attackerStats = state.Statistics.[creature]
                         let attacks = attackerStats.AllAttacks ()
@@ -743,29 +758,38 @@ module Combat =
             then []
             else
                 match outcome with
-                | Move (_, dir, _) -> 
-                    // do we have melee attacks that we can use within range,
-                    // and are we in range before, out of range after
-                    let distanceBefore = 
-                        distance 
-                            globalState.CreatureState.[trigger].Position 
-                            globalState.CreatureState.[creature].Position
-                    let distanceAfter = 
-                        distance 
-                            (globalState.CreatureState.[trigger].Position |> move dir)
-                            globalState.CreatureState.[creature].Position
-                    
-                    let attackerStats = globalState.Statistics.[creature]
-                    attackerStats.AllAttacks ()
-                    |> List.filter (fun attack -> 
-                        match attack.Type with 
-                        | Attacks.Melee reach -> distanceBefore <= reach && distanceAfter > reach
-                        | Attacks.Ranged _ -> false)
-                    |> List.map (fun attack -> OpportunityAttack(trigger, attack))
+                | Move (_, dir, _) ->
+                    // is the creature Disengaging
+                    let disengaging = 
+                        match globalState.Turn with 
+                        | None -> false // we should not even have to check
+                        | Some turn -> turn.Disengaging
+                    if disengaging 
+                    then []
+                    else
+                        // do we have melee attacks that we can use within range,
+                        // and are we in range before, out of range after
+                        let distanceBefore = 
+                            distance 
+                                globalState.CreatureState.[trigger].Position 
+                                globalState.CreatureState.[creature].Position
+                        let distanceAfter = 
+                            distance 
+                                (globalState.CreatureState.[trigger].Position |> move dir)
+                                globalState.CreatureState.[creature].Position
+                        
+                        let attackerStats = globalState.Statistics.[creature]
+                        attackerStats.AllAttacks ()
+                        |> List.filter (fun attack -> 
+                            match attack.Type with 
+                            | Attacks.Melee reach -> distanceBefore <= reach && distanceAfter > reach
+                            | Attacks.Ranged _ -> false)
+                        |> List.map (fun attack -> OpportunityAttack(trigger, attack))
                 | SuccessfulAttack _ -> [] 
                 | FailedAttack _ -> []
                 | Dash _ -> []
                 | Dodge _ -> []
+                | Disengage _ -> []
 
         let riposte (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             if creature = trigger
@@ -796,6 +820,7 @@ module Combat =
                 | FailedAttack _ -> []
                 | Dash _ -> []
                 | Dodge _ -> []
+                | Disengage _ -> []
 
         let alternatives (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             [
@@ -909,6 +934,7 @@ module Combat =
                     Creature = nextCreatureUp
                     MovementLeft = globalState.Statistics.[nextCreatureUp].Movement                
                     HasTakenAction = false
+                    Disengaging = false
                     }        
                 let nextCreatureState = 
                     { globalState.CreatureState.[nextCreatureUp] with
@@ -956,6 +982,8 @@ module Combat =
                     Outcome.Dash (creature, movement)
                 | Action.Dodge -> 
                     Outcome.Dodge creature
+                | Action.Disengage ->
+                    Outcome.Disengage creature
             let reactions = 
                 globalState.Initiative
                 |> List.choose (

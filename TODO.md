@@ -5,6 +5,8 @@
 - crossing creature space and size 
 - Multi Attacks: 1 Action, 2 Attacks
 - record full detail of attack (attack roll, crit, adv/dis, ...)
+- review if exception cases can be avoided for outcomes like disengage, ... that are never reactions
+- add bonus actions
 
 ## Backlog
 
