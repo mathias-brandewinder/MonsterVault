@@ -1,4 +1,5 @@
 namespace MonsterVault
+open System
 
 [<AutoOpen>]
 module DiceRolls = 
@@ -502,6 +503,7 @@ module Combat =
         | SuccessfulAttack of CreatureID * CreatureID * int
         | FailedAttack of CreatureID * CreatureID
         | Dash of CreatureID * int<ft>
+        | Dodge of CreatureID
         with 
         // apply the outcome to the state of the world
         static member applyEffect (outcome: Outcome) (state: GlobalState) =
@@ -547,20 +549,27 @@ module Combat =
                         }
                         |> Some
                 }
+            | Outcome.Dodge creature -> 
+                let creatureState = state.CreatureState.[creature]
+                let updatedState = 
+                    { creatureState with
+                        Dodging = true
+                    }
+                { state with
+                    CreatureState =
+                        state.CreatureState
+                        |> Map.add creature updatedState
+                }
+
         // update the turn, to keep track of 
         // whether or not actions are still possible
         static member updateAction (outcome: Outcome) (state: GlobalState) =
             match outcome with
             | Outcome.Move _ -> state         
-            | Outcome.FailedAttack _ -> 
-                { state with 
-                    Turn = Some { state.Turn.Value with HasTakenAction = true } 
-                }
-            | Outcome.SuccessfulAttack _ -> 
-                { state with 
-                    Turn = Some { state.Turn.Value with HasTakenAction = true } 
-                }
-            | Outcome.Dash _ ->
+            | Outcome.FailedAttack _ 
+            | Outcome.SuccessfulAttack _  
+            | Outcome.Dash _ 
+            | Outcome.Dodge _ ->
                 { state with 
                     Turn = Some { state.Turn.Value with HasTakenAction = true } 
                 }
@@ -584,6 +593,7 @@ module Combat =
                         |> Map.add source { attackerState with HasTakenReaction = true } 
                 }
             | Outcome.Dash _ -> failwith "Error: dash is not a possible reaction"
+            | Outcome.Dodge _ -> failwith "Error: dodge is not a possible reaction"
 
     module Actions = 
 
@@ -591,6 +601,7 @@ module Combat =
             | Move of Direction
             | Attack of (CreatureID * Attack)
             | Dash
+            | Dodge
 
         type ActionTaken =
             | FinishTurn 
@@ -687,6 +698,7 @@ module Combat =
                             |> List.map Move 
 
                         yield Dash
+                        yield Dodge
                         // every possible attack
                         let attackerStats = state.Statistics.[creature]
                         let attacks = attackerStats.AllAttacks ()
@@ -747,6 +759,7 @@ module Combat =
                 | SuccessfulAttack _ -> [] 
                 | FailedAttack _ -> []
                 | Dash _ -> []
+                | Dodge _ -> []
 
         let riposte (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             if creature = trigger
@@ -776,6 +789,7 @@ module Combat =
                         |> List.map (fun attack -> Riposte (origin, attack))
                 | FailedAttack _ -> []
                 | Dash _ -> []
+                | Dodge _ -> []
 
         let alternatives (globalState: GlobalState) (trigger: CreatureID, outcome: Outcome) (creature: CreatureID) =
             [
@@ -925,6 +939,8 @@ module Combat =
                 | Action.Dash ->
                     let movement = globalState.Statistics.[creature].Movement
                     Outcome.Dash (creature, movement)
+                | Action.Dodge -> 
+                    Outcome.Dodge creature
             let reactions = 
                 globalState.Initiative
                 |> List.choose (
