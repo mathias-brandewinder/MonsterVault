@@ -3,10 +3,13 @@
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Domain.fs" />
-    <Compile Include="Data.fs" />
-    <Compile Include="Brains.fs" />
-    <Compile Include="App.fs" />
+    <ProjectReference Include="..\MonsterVault.Core\MonsterVault.Core.fsproj">
+      <Name>MonsterVault.Core.fsproj</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="src/Data.fs" />
+    <Compile Include="src/App.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Fable.Core" Version="2.0.2" />
